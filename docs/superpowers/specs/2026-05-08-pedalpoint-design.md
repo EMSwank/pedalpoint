@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-08
 **Status:** Approved
-**Repo:** github.com/USERNAME/pedalpoint (open source)
+**Repo:** github.com/EMSwank/pedalpoint (open source)
 
 ---
 
@@ -45,7 +45,7 @@ Claude Code session
 | Variable | Default | Description |
 |---|---|---|
 | `PEDALPOINT_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible endpoint |
-| `PEDALPOINT_MODEL` | `llama3` | Default local model |
+| `PEDALPOINT_MODEL` | `gemma4:e4b` | Default local model (configurable for larger models) |
 | `PEDALPOINT_MODE` | `hybrid` | `hybrid` / `local-only` / `passthrough` |
 | `PEDALPOINT_TIMEOUT` | `120` | Read timeout in seconds |
 | `PEDALPOINT_INITIAL_FALLBACK_MINUTES` | `60` | Initial OPEN state duration; doubles on each probe failure (cap: 1440) |
@@ -107,11 +107,12 @@ async def local_llm(
 
 ### Error Mapping
 
-| `httpx` exception | User-facing MCP error |
-|---|---|
-| `ConnectError` | "Ollama not reachable at `{BASE_URL}` — is it running?" |
-| `TimeoutException` | "Model timed out after `{TIMEOUT}s` — increase `PEDALPOINT_TIMEOUT`" |
-| `HTTPStatusError` | Forward HTTP status code + response body verbatim |
+| `httpx` exception | Condition | User-facing MCP error |
+|---|---|---|
+| `ConnectError` | Server unreachable | "Ollama not reachable at `{BASE_URL}` — is it running?" |
+| `TimeoutException` | Response too slow | "Model timed out after `{TIMEOUT}s` — increase `PEDALPOINT_TIMEOUT`" |
+| `HTTPStatusError 404` | Model not pulled | "Model `{model}` not found — run: `ollama pull {model}`" |
+| `HTTPStatusError` other | API error | Forward HTTP status code + response body verbatim |
 
 Errors surface as MCP tool errors. Claude Code displays them inline; skill catches and handles routing decisions.
 
@@ -122,6 +123,34 @@ Errors surface as MCP tool errors. Claude Code displays them inline; skill catch
 **Location:** `~/.claude/plugins/pedalpoint/skills/route-tasks.md`
 **Replaces:** `subagent-driven-development` (full replacement, not wrapper)
 **Invocation:** `pedalpoint:route-tasks`
+
+### Execution Model
+
+**Local LLM has no tool access.** It receives a prompt and returns a string — nothing more.
+
+Claude always owns execution:
+- Branch creation (`git checkout -b`)
+- File writes (Write/Edit tools)
+- Git commits (Bash tool)
+- All tool invocation
+
+Local LLM owns only content generation — what code to write. Claude applies that content using its own tools regardless of routing.
+
+```
+mechanical task routed to local_llm:
+  1. Claude assembles context (Context Courier)
+  2. Claude calls local_llm(prompt, system) → string returned
+  3. Claude writes returned code to file via Write/Edit
+  4. Claude creates branch + commits via Bash
+  5. Claude marks task complete
+
+judgment task routed to Agent:
+  1. Claude spawns Agent with full task context
+  2. Agent reasons, writes files, commits
+  3. Claude marks task complete
+```
+
+Branch naming, commit conventions, and git workflow are identical in both paths — Claude executes them. Routing only affects who generates the content.
 
 ### Operating Modes
 
@@ -163,10 +192,15 @@ Claude applies these criteria to each task description before routing.
 Before every `local_llm` call, the skill must act as Context Courier:
 
 1. Identify what established pattern applies to the task
-2. Locate relevant example file(s) in the codebase via Read/grep
-3. Extract focused excerpt (most relevant 30–50 lines — not whole file)
-4. Assemble augmented prompt within `PEDALPOINT_CONTEXT_LIMIT` (default 16000 chars)
-5. Call `local_llm(prompt=augmented, system=coding_context)`
+2. **Attempt grep/Read** for relevant example file(s) in the codebase
+3. **Check result explicitly:**
+   - grep returns no results AND no matching file found → **escalate to Agent** (no pattern = not actually mechanical)
+   - Non-empty result found → continue to step 4
+4. Extract focused excerpt (most relevant 30–50 lines — not whole file)
+5. Assemble augmented prompt within `PEDALPOINT_CONTEXT_LIMIT` (default 16000 chars)
+6. Call `local_llm(prompt=augmented, system=coding_context)`
+
+The grep/Read check is mandatory. Claude must not assume a pattern exists — it must verify. This prevents hallucinated patterns from reaching the local LLM.
 
 **Augmented prompt structure:**
 ```
@@ -182,8 +216,6 @@ prompt:
    [task description]
    Follow exact naming conventions, structure, and patterns above."
 ```
-
-If no pattern found → escalate to Agent (not actually mechanical).
 
 ### Task Execution Decision Tree
 
@@ -290,7 +322,7 @@ HALF-OPEN probe: minimal Agent spawn (`"Respond with only the word ok"`).
 ### One-liner
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/USERNAME/pedalpoint/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | sh
 ```
 
 With options:
@@ -304,22 +336,27 @@ curl -fsSL .../install.sh | sh -s -- --model mistral --base-url http://localhost
    - Python 3.11+ (fail if missing)
    - `curl` or `git` (fail if missing)
    - Ollama reachable at `base_url` (warn only — don't fail)
+   - `ollama` CLI present (warn only if missing)
 
 2. **Detect package manager** — prefer: `uv tool install` > `pipx install` > `pip install --user`
 
 3. **Install Python package** → `pedalpoint-server` binary lands in PATH
 
-4. **Install companion skill**
+4. **Pull default model** — `ollama pull $PEDALPOINT_MODEL` (default: `gemma4:e4b`)
+   - Skipped if Ollama unreachable (non-fatal — warns user to run manually)
+   - Ensures first `local_llm` call succeeds; prevents confusing 404 on first use
+
+6. **Install companion skill**
    - Copy `skills/route-tasks.md` → `~/.claude/plugins/pedalpoint/skills/`
    - Copy plugin manifest → `~/.claude/plugins/pedalpoint/`
 
-5. **Register MCP server in `~/.claude/mcp.json`**
+7. **Register MCP server in `~/.claude/mcp.json`**
    - `jq` merge (not overwrite — preserves other servers)
    - Injects env vars from flags or defaults
 
-6. **Create `~/.pedalpoint/` directory**
+8. **Create `~/.pedalpoint/` directory**
 
-7. **Print summary + restart reminder**
+9. **Print summary + restart reminder**
 
 ### MCP Config Entry
 
@@ -331,7 +368,7 @@ curl -fsSL .../install.sh | sh -s -- --model mistral --base-url http://localhost
       "args": [],
       "env": {
         "PEDALPOINT_BASE_URL": "http://localhost:11434/v1",
-        "PEDALPOINT_MODEL": "llama3",
+        "PEDALPOINT_MODEL": "gemma4:e4b",
         "PEDALPOINT_MODE": "hybrid",
         "PEDALPOINT_TIMEOUT": "120"
       }
