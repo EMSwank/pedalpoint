@@ -1,6 +1,5 @@
-import os
 import pytest
-from pedalpoint.config import Config, get_config
+from pedalpoint.config import get_config
 
 
 def test_defaults(monkeypatch):
