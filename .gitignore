@@ -10,3 +10,5 @@ venv/
 htmlcov/
 *.log
 .env
+.ruff_cache/
+.DS_Store
