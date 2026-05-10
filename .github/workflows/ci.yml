@@ -63,6 +63,19 @@ jobs:
           PEDALPOINT_MODEL: "gemma4:e4b"
         run: pytest tests/integration/ -v
 
+  install-tests:
+    name: Install Script Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: sudo apt-get install -y bats
+
+      - name: Run install script tests
+        run: bats tests/install/ -v
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
