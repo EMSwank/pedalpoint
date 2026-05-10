@@ -63,12 +63,20 @@ fi
 
 printf '→ Checking prerequisites...\n'
 
-# Python 3.11+
-if ! command -v python3 >/dev/null 2>&1; then
-  printf 'ERROR: python3 not found. Install Python 3.11+.\n' >&2; exit 1
-fi
-if ! python3 -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" 2>/dev/null; then
-  printf 'ERROR: Python 3.11+ required.\n' >&2; exit 1
+# Python 3.11+ — try versioned binaries if python3 is too old
+PYTHON3=""
+for _py in python3 python3.13 python3.12 python3.11; do
+  if command -v "$_py" >/dev/null 2>&1 && \
+     "$_py" -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" 2>/dev/null; then
+    PYTHON3="$_py"
+    break
+  fi
+done
+if [ -z "$PYTHON3" ]; then
+  _found=$(python3 --version 2>&1 || printf 'not found')
+  printf 'ERROR: Python 3.11+ required (found: %s). Install Python 3.11+ or add it to PATH.\n' \
+    "$_found" >&2
+  exit 1
 fi
 
 # curl or git (needed for install itself)

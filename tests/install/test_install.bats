@@ -180,6 +180,38 @@ EOF
   grep -q "pip" "$HOME/.pkg_called"
 }
 
+# ── Python version fallback ───────────────────────────────────────────────────
+
+@test "python3.11 used when python3 is too old" {
+  # python3 stub: fails version check (simulates 3.9)
+  printf '#!/bin/sh\n[ "$1" = "--version" ] && { printf "Python 3.9.6\n"; exit 0; }; exit 1\n' \
+    > "$STUB_DIR/python3"
+  chmod +x "$STUB_DIR/python3"
+
+  # python3.11 stub: passes version check
+  printf '#!/bin/sh\nexit 0\n' > "$STUB_DIR/python3.11"
+  chmod +x "$STUB_DIR/python3.11"
+
+  run sh "$INSTALL_SH"
+  [ "$status" -eq 0 ]
+}
+
+@test "no python 3.11+ anywhere exits 1 with helpful message" {
+  # python3 stub: fails version check and reports version via --version
+  printf '#!/bin/sh\n[ "$1" = "--version" ] && { printf "Python 3.9.6\n"; exit 0; }; exit 1\n' \
+    > "$STUB_DIR/python3"
+  chmod +x "$STUB_DIR/python3"
+  # shadow all versioned binaries so system python3.11/3.12/3.13 can't be found
+  for _py in python3.11 python3.12 python3.13; do
+    printf '#!/bin/sh\nexit 1\n' > "$STUB_DIR/$_py"
+    chmod +x "$STUB_DIR/$_py"
+  done
+
+  run sh "$INSTALL_SH"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "${output}" | grep -q "Python 3.11+ required"
+}
+
 # ── Uninstall ─────────────────────────────────────────────────────────────────
 
 @test "uninstall removes skill dir" {
