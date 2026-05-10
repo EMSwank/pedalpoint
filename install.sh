@@ -19,7 +19,7 @@ done
 SKILL_DIR="${HOME}/.claude/plugins/pedalpoint"
 MCP_CONFIG="${HOME}/.claude/mcp.json"
 STATE_DIR="${HOME}/.pedalpoint"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PEDALPOINT_RAW="https://raw.githubusercontent.com/EMSwank/pedalpoint/main"
 
 # ── Uninstall ────────────────────────────────────────────────────────────────
 if [ "$UNINSTALL" = "1" ]; then
@@ -124,7 +124,8 @@ fi
 # ── Step 6: Install companion skill ─────────────────────────────────────────
 printf '→ Installing companion skill...\n'
 mkdir -p "${SKILL_DIR}/skills"
-cp "${SCRIPT_DIR}/skills/route-tasks.md" "${SKILL_DIR}/skills/"
+curl -fsSL "${PEDALPOINT_RAW}/skills/route-tasks.md" \
+  -o "${SKILL_DIR}/skills/route-tasks.md"
 
 # ── Step 7: Register MCP server ─────────────────────────────────────────────
 printf '→ Registering MCP server in %s...\n' "$MCP_CONFIG"
