@@ -131,8 +131,8 @@ curl -fsSL "${PEDALPOINT_RAW}/skills/route-tasks.md" \
 printf '→ Registering MCP server in %s...\n' "$MCP_CONFIG"
 
 # Reject values that would break JSON string encoding
-case "$PEDALPOINT_MODEL" in *'"'*|*'\\'*) printf 'ERROR: PEDALPOINT_MODEL must not contain " or \\\n' >&2; exit 1;; esac
-case "$PEDALPOINT_BASE_URL" in *'"'*|*'\\'*) printf 'ERROR: PEDALPOINT_BASE_URL must not contain " or \\\n' >&2; exit 1;; esac
+case "$PEDALPOINT_MODEL" in *'"'*|*\\*) printf 'ERROR: PEDALPOINT_MODEL must not contain " or \\\n' >&2; exit 1;; esac
+case "$PEDALPOINT_BASE_URL" in *'"'*|*\\*) printf 'ERROR: PEDALPOINT_BASE_URL must not contain " or \\\n' >&2; exit 1;; esac
 
 ENTRY="{\"command\":\"pedalpoint-server\",\"args\":[],\"env\":{\"PEDALPOINT_BASE_URL\":\"${PEDALPOINT_BASE_URL}\",\"PEDALPOINT_MODEL\":\"${PEDALPOINT_MODEL}\",\"PEDALPOINT_MODE\":\"hybrid\",\"PEDALPOINT_TIMEOUT\":\"120\"}}"
 

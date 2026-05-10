@@ -79,6 +79,13 @@ Integration tests (requires Ollama running):
 PEDALPOINT_INTEGRATION=true pytest tests/integration/ -v
 ```
 
+Install script tests (requires [bats-core](https://github.com/bats-core/bats-core)):
+
+```sh
+brew install bats-core   # macOS; use apt-get install bats on Linux
+bats tests/install/
+```
+
 ## License
 
 MIT
