@@ -6,7 +6,7 @@ import pytest
 from pedalpoint.config import get_config
 from pedalpoint.server import _call_local_llm
 
-INTEGRATION = os.getenv("PEDALPOINT_INTEGRATION")
+INTEGRATION = os.getenv("PEDALPOINT_INTEGRATION", "").lower() in {"1", "true", "yes"}
 
 
 @pytest.mark.skipif(not INTEGRATION, reason="Set PEDALPOINT_INTEGRATION=true to run")
@@ -28,4 +28,4 @@ async def test_live_ollama_system_prompt_respected() -> None:
             client, "What is 2+2?", "Reply with only the number.", cfg.model, cfg
         )
     assert isinstance(result, str)
-    assert len(result) > 0
+    assert len(result) <= 10
