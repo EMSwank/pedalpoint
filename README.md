@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh 
 ```sh
 git clone https://github.com/EMSwank/pedalpoint
 cd pedalpoint
-pip install -e ".[dev]"
+pip install -e ".[dev]"   # requires pip >= 21.3; run `pip install --upgrade pip` if needed
 pytest tests/unit/ -v
 ```
 
