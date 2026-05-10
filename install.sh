@@ -106,7 +106,7 @@ fi
 printf '→ Installing pedalpoint via %s...\n' "$PKG_MGR"
 case "$PKG_MGR" in
   uv)   uv tool install pedalpoint ;;
-  pipx) pipx install pedalpoint ;;
+  pipx) pipx install pedalpoint 2>/dev/null || pipx upgrade pedalpoint ;;
   pip)  pip install --user pedalpoint ;;
 esac
 
@@ -128,6 +128,11 @@ cp "${SCRIPT_DIR}/skills/route-tasks.md" "${SKILL_DIR}/skills/"
 
 # ── Step 7: Register MCP server ─────────────────────────────────────────────
 printf '→ Registering MCP server in %s...\n' "$MCP_CONFIG"
+
+# Reject values that would break JSON string encoding
+case "$PEDALPOINT_MODEL" in *'"'*|*'\\'*) printf 'ERROR: PEDALPOINT_MODEL must not contain " or \\\n' >&2; exit 1;; esac
+case "$PEDALPOINT_BASE_URL" in *'"'*|*'\\'*) printf 'ERROR: PEDALPOINT_BASE_URL must not contain " or \\\n' >&2; exit 1;; esac
+
 ENTRY="{\"command\":\"pedalpoint-server\",\"args\":[],\"env\":{\"PEDALPOINT_BASE_URL\":\"${PEDALPOINT_BASE_URL}\",\"PEDALPOINT_MODEL\":\"${PEDALPOINT_MODEL}\",\"PEDALPOINT_MODE\":\"hybrid\",\"PEDALPOINT_TIMEOUT\":\"120\"}}"
 
 if [ -f "$MCP_CONFIG" ] && command -v jq >/dev/null 2>&1; then
@@ -138,8 +143,10 @@ elif [ ! -f "$MCP_CONFIG" ]; then
   mkdir -p "$(dirname "$MCP_CONFIG")"
   printf '{"mcpServers":{"pedalpoint":%s}}\n' "$ENTRY" > "$MCP_CONFIG"
 else
-  printf 'WARNING: jq not found — manually add pedalpoint to %s\n' "$MCP_CONFIG"
-  printf 'Entry: {"mcpServers":{"pedalpoint":%s}}\n' "$ENTRY"
+  printf 'ERROR: jq not found — cannot update existing %s\n' "$MCP_CONFIG" >&2
+  printf 'Install jq and re-run, or manually add:\n' >&2
+  printf '  {"mcpServers":{"pedalpoint":%s}}\n' "$ENTRY" >&2
+  exit 1
 fi
 
 # ── Step 8: Create state directory ──────────────────────────────────────────
