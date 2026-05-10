@@ -60,9 +60,7 @@ def transition_to_closed() -> CircuitState:
     return CLOSED_STATE.copy()
 
 
-def double_duration(
-    state: CircuitState, initial_minutes: int = 60
-) -> CircuitState:
+def double_duration(state: CircuitState, initial_minutes: int = 60) -> CircuitState:
     failure_count = state.get("failure_count", 1) + 1
     return transition_to_open(
         reason=state.get("reason", "unknown"),
