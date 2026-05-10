@@ -41,17 +41,19 @@ async def _call_local_llm(
     except httpx.ConnectError:
         raise ValueError(
             f"Ollama not reachable at {cfg.base_url} — is it running?"
-        )
+        ) from None
     except httpx.TimeoutException:
         raise ValueError(
             f"Model timed out after {cfg.timeout}s — increase PEDALPOINT_TIMEOUT"
-        )
+        ) from None
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
             raise ValueError(
                 f"Model `{model}` not found — run: ollama pull {model}"
-            )
-        raise ValueError(f"HTTP {exc.response.status_code}: {exc.response.text}")
+            ) from exc
+        raise ValueError(
+            f"HTTP {exc.response.status_code}: {exc.response.text}"
+        ) from exc
 
 
 @mcp.tool()
