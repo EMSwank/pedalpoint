@@ -16,9 +16,7 @@ TEST_CFG = Config(
     context_limit=16000,
 )
 
-MOCK_RESPONSE = {
-    "choices": [{"message": {"content": "def foo(): pass"}}]
-}
+MOCK_RESPONSE = {"choices": [{"message": {"content": "def foo(): pass"}}]}
 
 
 @respx.mock

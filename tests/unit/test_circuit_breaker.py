@@ -1,10 +1,8 @@
 import json
-import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from pedalpoint.circuit_breaker import (
-    CLOSED_STATE,
     compute_duration,
     double_duration,
     increment_rerouted,
@@ -15,8 +13,8 @@ from pedalpoint.circuit_breaker import (
     write_state,
 )
 
-
 # --- read_state ---
+
 
 def test_read_state_absent_returns_closed(tmp_path: Path) -> None:
     assert read_state(tmp_path / "state.json") == {"circuit": "closed"}
@@ -36,6 +34,7 @@ def test_read_state_corrupted_returns_closed(tmp_path: Path) -> None:
 
 
 # --- write_state ---
+
 
 def test_write_state_creates_file(tmp_path: Path) -> None:
     p = tmp_path / "state.json"
@@ -57,6 +56,7 @@ def test_write_state_overwrites_existing(tmp_path: Path) -> None:
 
 
 # --- compute_duration ---
+
 
 def test_compute_duration_failure_1() -> None:
     assert compute_duration(1) == 60
@@ -85,6 +85,7 @@ def test_compute_duration_custom_initial() -> None:
 
 # --- is_expired ---
 
+
 def test_is_expired_future() -> None:
     expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     assert not is_expired({"expires": expires})
@@ -100,6 +101,7 @@ def test_is_expired_missing_key() -> None:
 
 
 # --- transition_to_open ---
+
 
 def test_transition_to_open_sets_circuit() -> None:
     state = transition_to_open("402_quota")
@@ -134,11 +136,13 @@ def test_transition_to_open_tasks_rerouted() -> None:
 
 # --- transition_to_closed ---
 
+
 def test_transition_to_closed() -> None:
     assert transition_to_closed() == {"circuit": "closed"}
 
 
 # --- double_duration ---
+
 
 def test_double_duration_increments_failure_count() -> None:
     state = transition_to_open("402_quota", failure_count=1)
@@ -165,6 +169,7 @@ def test_double_duration_caps_at_1440() -> None:
 
 
 # --- increment_rerouted ---
+
 
 def test_increment_rerouted_starts_at_zero() -> None:
     state = transition_to_open("402_quota")

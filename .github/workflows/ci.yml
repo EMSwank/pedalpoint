@@ -51,7 +51,7 @@ jobs:
       - name: Start Ollama and pull model
         run: |
           ollama serve &
-          sleep 5
+          timeout 30 bash -c 'until ollama list 2>/dev/null; do sleep 1; done'
           ollama pull gemma4:e4b
 
       - name: Install dependencies

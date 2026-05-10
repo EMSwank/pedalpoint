@@ -1,11 +1,15 @@
 import pytest
+
 from pedalpoint.config import get_config
 
 
 def test_defaults(monkeypatch):
     for key in [
-        "PEDALPOINT_BASE_URL", "PEDALPOINT_MODEL", "PEDALPOINT_MODE",
-        "PEDALPOINT_TIMEOUT", "PEDALPOINT_INITIAL_FALLBACK_MINUTES",
+        "PEDALPOINT_BASE_URL",
+        "PEDALPOINT_MODEL",
+        "PEDALPOINT_MODE",
+        "PEDALPOINT_TIMEOUT",
+        "PEDALPOINT_INITIAL_FALLBACK_MINUTES",
         "PEDALPOINT_CONTEXT_LIMIT",
     ]:
         monkeypatch.delenv(key, raising=False)
