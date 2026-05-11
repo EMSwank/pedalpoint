@@ -17,7 +17,6 @@ while [ "$#" -gt 0 ]; do
 done
 
 SKILL_DIR="${HOME}/.claude/skills/route-tasks"
-MCP_CONFIG="${HOME}/.claude/mcp.json"
 STATE_DIR="${HOME}/.pedalpoint"
 PEDALPOINT_RAW="https://raw.githubusercontent.com/EMSwank/pedalpoint/main"
 
@@ -26,11 +25,9 @@ if [ "$UNINSTALL" = "1" ]; then
   printf '→ Uninstalling pedalpoint...\n'
 
   # Remove MCP entry
-  if [ -f "$MCP_CONFIG" ] && command -v jq >/dev/null 2>&1; then
-    tmp=$(mktemp)
-    jq 'del(.mcpServers.pedalpoint)' "$MCP_CONFIG" > "$tmp"
-    mv "$tmp" "$MCP_CONFIG"
-    printf '✓ Removed pedalpoint from %s\n' "$MCP_CONFIG"
+  if command -v claude >/dev/null 2>&1; then
+    claude mcp remove pedalpoint -s user 2>/dev/null && \
+      printf '✓ Removed pedalpoint MCP server\n' || true
   fi
 
   # Remove skill
@@ -136,27 +133,19 @@ curl -fsSL "${PEDALPOINT_RAW}/skills/route-tasks/SKILL.md" \
   -o "${SKILL_DIR}/SKILL.md"
 
 # ── Step 7: Register MCP server ─────────────────────────────────────────────
-printf '→ Registering MCP server in %s...\n' "$MCP_CONFIG"
+printf '→ Registering MCP server via claude mcp add...\n'
 
-# Reject values that would break JSON string encoding
-case "$PEDALPOINT_MODEL" in *'"'*|*\\*) printf 'ERROR: PEDALPOINT_MODEL must not contain " or \\\n' >&2; exit 1;; esac
-case "$PEDALPOINT_BASE_URL" in *'"'*|*\\*) printf 'ERROR: PEDALPOINT_BASE_URL must not contain " or \\\n' >&2; exit 1;; esac
-
-ENTRY="{\"command\":\"pedalpoint-server\",\"args\":[],\"env\":{\"PEDALPOINT_BASE_URL\":\"${PEDALPOINT_BASE_URL}\",\"PEDALPOINT_MODEL\":\"${PEDALPOINT_MODEL}\",\"PEDALPOINT_MODE\":\"hybrid\",\"PEDALPOINT_TIMEOUT\":\"120\"}}"
-
-if [ -f "$MCP_CONFIG" ] && command -v jq >/dev/null 2>&1; then
-  tmp=$(mktemp)
-  jq --argjson entry "$ENTRY" '.mcpServers.pedalpoint = $entry' "$MCP_CONFIG" > "$tmp"
-  mv "$tmp" "$MCP_CONFIG"
-elif [ ! -f "$MCP_CONFIG" ]; then
-  mkdir -p "$(dirname "$MCP_CONFIG")"
-  printf '{"mcpServers":{"pedalpoint":%s}}\n' "$ENTRY" > "$MCP_CONFIG"
-else
-  printf 'ERROR: jq not found — cannot update existing %s\n' "$MCP_CONFIG" >&2
-  printf 'Install jq and re-run, or manually add:\n' >&2
-  printf '  {"mcpServers":{"pedalpoint":%s}}\n' "$ENTRY" >&2
+if ! command -v claude >/dev/null 2>&1; then
+  printf 'ERROR: claude CLI not found — install Claude Code first.\n' >&2
   exit 1
 fi
+
+claude mcp remove pedalpoint -s user 2>/dev/null || true
+claude mcp add pedalpoint pedalpoint-server --scope user \
+  -e "PEDALPOINT_BASE_URL=${PEDALPOINT_BASE_URL}" \
+  -e "PEDALPOINT_MODEL=${PEDALPOINT_MODEL}" \
+  -e "PEDALPOINT_MODE=hybrid" \
+  -e "PEDALPOINT_TIMEOUT=120"
 
 # ── Step 8: Create state directory ──────────────────────────────────────────
 mkdir -p "$STATE_DIR"
@@ -164,9 +153,8 @@ mkdir -p "$STATE_DIR"
 # ── Step 9: Summary ──────────────────────────────────────────────────────────
 printf '\n'
 printf '✓ pedalpoint installed!\n'
-printf '✓ MCP server:  pedalpoint-server\n'
+printf '✓ MCP server:  pedalpoint-server (user scope)\n'
 printf '✓ Skill:       /route-tasks\n'
-printf '✓ Config:      %s\n' "$MCP_CONFIG"
 printf '✓ State dir:   %s\n' "$STATE_DIR"
 printf '\n'
 printf '→ Restart Claude Code to activate.\n'
