@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from .config import Config, get_config
 
@@ -58,7 +58,7 @@ async def _call_local_llm(
 
 @mcp.tool()
 async def local_llm(
-    ctx,  # type: ignore[type-arg]
+    ctx: Context,
     prompt: str,
     system: str | None = None,
     model: str | None = None,
