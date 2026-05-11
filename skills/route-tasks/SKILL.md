@@ -279,8 +279,9 @@ Write this to `~/.pedalpoint/state.json` using the Write tool.
 After all tasks in the plan are complete:
 
 1. Check `~/.pedalpoint/fallback-log.md` for entries added in this session
-2. Count entries since session start
-3. If count > 0:
-   > "N tasks ran on local LLM during fallback. Run Claude review pass now? (y/n)"
-4. If user says yes: spawn Agent with prompt:
-   > "Review the work done by local LLM during fallback. Check `~/.pedalpoint/fallback-log.md` for the task list, then run `git log --oneline -<N>` and `git diff HEAD~<N>` to see the changes. Identify any issues with code quality, correctness, or missed requirements and summarize your findings."
+2. Count total entries since session start (N)
+3. Count entries containing `⚠ HIGH PRIORITY` (K)
+4. If N > 0:
+   > "N tasks ran on local LLM during fallback. K structural drafts marked HIGH PRIORITY (quota fallback — Agent review skipped). Review HIGH PRIORITY items first. Run Claude review pass now? (y/n)"
+5. If user says yes: spawn Agent with prompt:
+   > "Review the work done by local LLM during fallback. Check `~/.pedalpoint/fallback-log.md` for the task list — prioritize any entries marked ⚠ HIGH PRIORITY first, as these were committed without Agent review due to quota exhaustion. Then run `git log --oneline -<N>` and `git diff HEAD~<N>` to see the changes. Identify any issues with code quality, correctness, or missed requirements and summarize your findings."
