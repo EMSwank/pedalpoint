@@ -46,7 +46,13 @@ Then in any Claude Code session:
 
 pedalpoint handles routing automatically. No manual flagging needed.
 
-To verify the MCP server connected, check Claude Code's MCP status — `pedalpoint` should show green. If it shows disconnected, run `pedalpoint-server` directly to see the error.
+To verify the MCP server connected:
+
+```sh
+claude mcp get pedalpoint
+```
+
+Should show `Status: ✓ Connected`. If disconnected, run `pedalpoint-server` directly to see the error.
 
 ## Modes
 
@@ -77,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh 
 ```sh
 git clone https://github.com/EMSwank/pedalpoint
 cd pedalpoint
-pip install -e ".[dev]"   # requires pip >= 21.3; run `pip install --upgrade pip` if needed
+uv sync --extra dev   # or: pip install -e ".[dev]"
 pytest tests/unit/ -v
 ```
 
