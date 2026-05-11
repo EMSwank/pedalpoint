@@ -66,12 +66,26 @@ Read the task description. Apply these rules:
 
 **Examples:** generate CRUD following an existing CRUD file, write test function stubs, add type hints to existing functions, generate a config file following an existing template, write a serializer matching the existing serializer pattern.
 
+### Route to `local_llm` draft + Agent review (structural) when ANY apply:
+- Task involves a framework-known pattern:
+  - pytest fixture or test function
+  - FastAPI route, router, or dependency injection
+  - Pydantic model or schema
+  - Python dataclass
+  - Alembic migration stub
+  - Docstring block
+  - README section or documentation file
+- Task is spec-driven: field names, types, and behavior are fully spelled out in the task description — no open questions, no ambiguity
+
+**Examples:** "Add a pytest fixture that creates a test database session", "Add a Pydantic model for UserCreate with fields: name (str), email (EmailStr), age (int, optional)", "Write a README section explaining the circuit breaker behavior."
+
 ### Route to Agent (judgment) when ANY applies:
 - Architecture or design decision required
 - Debugging with unknown root cause
 - Cross-system integration
-- Security-sensitive code
-- Novel logic — no existing codebase pattern
+- Security-sensitive code (auth, payments, tokens, credentials)
+- Novel logic — no codebase pattern and no applicable framework standard
+- Ambiguous requirements — open questions that need clarification before implementing
 - Requires reading multiple files to understand what to build
 
 **When in doubt: route to Agent.**
