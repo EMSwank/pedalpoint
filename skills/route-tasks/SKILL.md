@@ -9,7 +9,15 @@ You are executing an implementation plan. For each task, follow these steps exac
 
 ## Prerequisites Check
 
-Verify the `local_llm` MCP tool is available. If it is not listed in your available tools, warn the user that the pedalpoint MCP server is not running and fall back to Agent for all tasks.
+Verify the `local_llm` MCP tool is available. If it is not listed in your available tools:
+> ⚠ pedalpoint MCP server not connected. Run `pedalpoint-server` in a terminal to diagnose. Falling back to Agent for all tasks.
+
+Fall back to Agent for all tasks and skip the remaining steps.
+
+If `local_llm` is listed, call it with a minimal probe prompt (`"ping"`). If it returns a connection error:
+> ⚠ Ollama unreachable — run `ollama serve` (or open Ollama.app on macOS) to enable local routing. Falling back to Agent for all tasks.
+
+Fall back to Agent for all tasks and skip the remaining steps.
 
 Check `PEDALPOINT_MODE` environment variable:
 - `local-only` → skip Step 2 classification, route ALL tasks through Step 3 (Context Courier) to local_llm
@@ -139,7 +147,7 @@ Parse the error text from the failed Agent spawn:
 | `429` or `rate.?limit` | Wait 30s, retry (up to 3 times). After 3 failures: route this task only to local_llm (circuit stays CLOSED) |
 | `402`, `quota`, `billing`, `insufficient` | Write OPEN state to `~/.pedalpoint/state.json` (see below). Re-route this task to local_llm via Step 3. |
 | `529`, `overload`, `capacity` | Route this task only to local_llm. Circuit stays CLOSED for next task. |
-| `timeout`, `connection` | Retry once. If still failing, treat as 529. |
+| `timeout`, `connection` | Print `⚠ local LLM unreachable — falling back to Claude (run \`ollama serve\` to restore)`. Retry once. If still failing, treat as 529. |
 
 **Writing OPEN state** (on 402 quota error):
 ```json
