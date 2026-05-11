@@ -4,7 +4,7 @@
 
 MCP server + companion superpowers skill. Two deliverables:
 1. `pedalpoint-server` — Python binary (FastMCP, httpx)
-2. `skills/route-tasks.md` — Markdown skill for Claude Code
+2. `skills/route-tasks/SKILL.md` — Markdown skill for Claude Code
 
 ## Key Design Decisions
 
@@ -55,7 +55,7 @@ pytest tests/unit/ --cov=pedalpoint --cov-fail-under=90
 | `src/pedalpoint/error_classifier.py` | Regex classify error strings → error type |
 | `src/pedalpoint/circuit_breaker.py` | Pure fns for state transitions, expiry, backoff |
 | `src/pedalpoint/server.py` | FastMCP app, lifespan, `local_llm` tool, `_call_local_llm` |
-| `skills/route-tasks.md` | Claude instructions: routing, Context Courier, circuit breaker |
+| `skills/route-tasks/SKILL.md` | Claude instructions: routing, Context Courier, circuit breaker |
 | `install.sh` | Install pkg, pull model, register MCP config, copy skill |
 
 ## State File Format

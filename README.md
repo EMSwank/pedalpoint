@@ -35,7 +35,7 @@ Restart Claude Code after install.
 Instead of `superpowers:subagent-driven-development`, invoke:
 
 ```
-pedalpoint:route-tasks
+/route-tasks
 ```
 
 pedalpoint handles routing automatically. No manual flagging needed.
