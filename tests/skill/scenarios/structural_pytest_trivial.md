@@ -16,13 +16,14 @@
 5. Agent reviews, outputs PATCH (adds Optional import inline)
 6. Draft renamed to `src/schemas/user_update.py`
 7. pytest fails: `NameError: name 'Optional' not found`
-8. Skill inspects failure: single missing import — `Optional` IS used elsewhere in the file (in another field)
+8. Skill inspects failure: single missing import — `Optional` appears multiple times in the file (name and email fields both use it), so the import is clearly needed
 9. Trivial fix: add `from typing import Optional` to imports, re-run pytest once
 10. pytest passes, committed
 
 ## Trivial definition (for reference)
-Trivial = single-line syntax error, missing import already present elsewhere in the file,
-or typo in variable/function name. This scenario qualifies because Optional is in the same file.
+Trivial = single-line syntax error, missing import whose usage is already present in the file,
+or typo in variable/function name. This scenario qualifies because Optional is used in multiple
+fields in the same file — the needed import is unambiguous.
 
 ## Verification
 - Skill fixed inline without escalating

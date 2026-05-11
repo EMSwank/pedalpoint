@@ -15,7 +15,7 @@
 4. Code written to `src/api/posts.py.draft`
 5. Agent review spawned — draft is significantly wrong (missing db dependency, wrong return type)
 6. Agent outputs REWRITE and produces corrected version using project's dependency pattern
-7. Agent's rewrite overwrites `src/api/posts.py.draft`
+7. Agent's rewrite is written to `src/api/posts.py.draft`, replacing the local_llm output
 8. Skill renames draft → `src/api/posts.py`
 9. pytest passes, committed
 
