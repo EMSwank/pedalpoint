@@ -92,9 +92,13 @@ Read the task description. Apply these rules:
 
 ---
 
-## Step 3: Context Courier (mechanical tasks only)
+## Step 3: Context Courier
 
-You MUST gather pattern context before calling `local_llm`. Do not assume a pattern exists — verify it.
+Runs for both mechanical and structural tasks. Do not assume a pattern exists — verify it.
+
+When entering Step 3 without a prior classification from Step 2 (e.g., `local-only` mode), use the **Mechanical tasks** section.
+
+### Mechanical tasks
 
 1. Identify the pattern type from the task (CRUD, serializer, test stub, migration, etc.)
 2. Search the codebase:
@@ -102,24 +106,45 @@ You MUST gather pattern context before calling `local_llm`. Do not assume a patt
    grep -r "<relevant keyword>" src/ --include="*.py" -l 2>/dev/null
    ```
 3. **Check the result explicitly:**
-   - **No files returned / empty output:** The task is not actually mechanical. Escalate to Agent (Step 4b, judgment path). Do not proceed with local_llm.
+   - **No files returned / empty output:** The task is not actually mechanical. Escalate to Agent (judgment path). Do not proceed with local_llm.
    - **Files returned:** Read the most relevant file. Extract 30–50 lines of the closest matching example.
 
-4. Assemble the augmented prompt. Keep total length under 16000 characters:
+### Structural tasks
 
+1. Identify the convention type (Response model, exception handling, route pattern, model inheritance, fixture style, etc.)
+2. Search the codebase for style conventions:
+   ```bash
+   grep -r "<relevant keyword>" . --include="*.py" -l 2>/dev/null
    ```
-   system: "You are a code generator. Follow the provided patterns exactly. Output only code. No explanation."
+   Example keywords: `HTTPException` for error handling, `BaseModel` for Pydantic conventions, `pytest.fixture` for fixture style, `APIRouter` for route structure.
+3. **Check the result:**
+   - **Files returned:** Read the most relevant file. Extract 30–50 lines showing the project's style.
+   - **No files returned, framework-known task:** Proceed. Add to prompt: "No existing project pattern found. Follow framework defaults."
+   - **No files returned, spec-driven only (not framework-known):** Escalate to Agent (judgment path). Do not proceed with local_llm.
 
-   prompt: |
-     ## Existing pattern (<filepath> lines <N>-<M>):
-     <excerpt from file>
+### Assemble the augmented prompt (both tiers)
 
-     ## Task:
-     <task description>
-     Follow the exact naming conventions, structure, and patterns shown above.
-   ```
+Keep total length under 16000 characters:
 
-5. Proceed to Step 4 (local_llm execution path).
+```
+system: "You are a code generator. Follow the provided patterns exactly. Output only code. No explanation."
+
+prompt: |
+  ## Existing pattern (<filepath> lines <N>-<M>):
+  <excerpt from file>
+
+  ## Task:
+  <task description>
+  Follow the exact naming conventions, structure, and patterns shown above.
+```
+
+For structural tasks where no project pattern was found, replace the "Existing pattern" block with:
+```
+  ## Note:
+  No existing project pattern found. Follow framework defaults for <framework name>.
+```
+
+Proceed to Step 4.
 
 ---
 
