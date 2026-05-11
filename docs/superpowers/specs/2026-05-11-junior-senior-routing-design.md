@@ -187,6 +187,19 @@ Skill has no Python backing. Tests are manual scenarios in `tests/skill/scenario
 
 ---
 
+## Post-Implementation Documentation Updates
+
+After implementation, update these files:
+
+| File | What to update |
+|---|---|
+| `README.md` | Modes table: add structural tier to hybrid mode description. Add note that hybrid now includes Agent review for structural tasks. |
+| `CLAUDE.md` | Key Design Decisions: update "Thin server, smart skill" bullet to mention three-tier model and junior/senior framing. |
+| `skills/route-tasks/SKILL.md` | This IS the implementation target — no separate update needed. |
+| `tests/skill/scenarios/` | Add all new scenario files listed in the Testing section. |
+
+---
+
 ## Unchanged
 
 - Prerequisites check (MCP tool probe, Ollama ping)
