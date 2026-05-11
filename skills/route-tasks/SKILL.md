@@ -222,6 +222,17 @@ Parse the error text from the failed Agent spawn:
 | `529`, `overload`, `capacity` | Route this task only to local_llm. Circuit stays CLOSED for next task. |
 | `timeout`, `connection` | Print `⚠ local LLM unreachable — falling back to Claude (run \`ollama serve\` to restore)`. Retry once. If still failing, treat as 529. |
 
+**Structural path Agent review errors:**
+
+When the Agent review spawn (step 3 of the structural path) fails:
+
+| Error pattern | Action |
+|---|---|
+| `429` or `rate.?limit` | Wait 30s, retry review once. Still failing: rename `.draft` → target file, flag commit message `[unreviewed]`, log standard structural fallback entry. |
+| `402`, `quota`, `billing`, `insufficient` | Write OPEN state (see below). Rename `.draft` → target file (use draft content as-is; do not re-run local_llm). Log HIGH PRIORITY structural fallback entry. |
+| `529`, `overload`, `capacity` | Rename `.draft` → target file, flag commit message `[unreviewed]`, log standard structural fallback entry. Circuit stays CLOSED. |
+| `timeout`, `connection` | Delete `.draft`. Re-classify as judgment. Run judgment path. |
+
 **Writing OPEN state** (on 402 quota error):
 ```json
 {
@@ -241,6 +252,23 @@ Write this to `~/.pedalpoint/state.json` using the Write tool.
 ## <ISO timestamp> — task rerouted (reason: <reason>)
 **Task:** <task description>
 **Response preview:** <first 200 chars of local_llm response>
+---
+```
+
+**Logging structural fallbacks (429/529 review skip)** — append to `~/.pedalpoint/fallback-log.md`:
+```markdown
+## <ISO timestamp> — structural draft committed unreviewed (reason: <reason>)
+**Task:** <task description>
+**Draft preview:** <first 200 chars of local_llm response>
+---
+```
+
+**Logging structural fallbacks (402 quota or circuit OPEN mid-task)** — append to `~/.pedalpoint/fallback-log.md`:
+```markdown
+## <ISO timestamp> — structural draft committed unreviewed (reason: <reason>) ⚠ HIGH PRIORITY
+**Task:** <task description>
+**Risk:** Agent review skipped due to quota. Logic correctness unverified.
+**Draft preview:** <first 200 chars of local_llm response>
 ---
 ```
 
