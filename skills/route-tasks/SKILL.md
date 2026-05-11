@@ -161,11 +161,45 @@ Apply the returned string:
 1. `git checkout -b feat/<task-slug>` (or appropriate branch prefix)
 2. Write the returned code to the target file using Write/Edit tools
 3. Run the test suite: `pytest tests/ -x -q`
-4. If tests fail with trivial issues (missing import, typo): fix inline. If non-trivial: escalate to Agent.
+4. If tests fail:
+   - **Trivial** (fix inline): single-line syntax error, missing import whose usage is already present in the file, typo in variable/function name → fix inline, re-run pytest once
+   - **Non-trivial** (escalate): logic error, multiple file changes required, new dependency needed → escalate to Agent
 5. Commit using Conventional Commits format
 6. Mark task complete in the plan
 
 Log this task to `~/.pedalpoint/fallback-log.md` only if circuit is OPEN (fallback active).
+
+### Structural path (local_llm draft + Agent review)
+
+Call the `local_llm` tool with the augmented prompt from Step 3:
+```
+local_llm(prompt=<augmented prompt>, system="You are a code generator. Follow the provided patterns exactly. Output only code. No explanation.")
+```
+
+1. `git checkout -b feat/<task-slug>` (or appropriate branch prefix)
+2. Write the returned code to `<target_file>.draft` (NOT the real filename)
+3. Spawn Agent review:
+   ```
+   Review <target_file>.draft against the task description below.
+   - If structurally sound with only minor issues: patch the draft inline and output PATCH.
+   - If significantly wrong but salvageable: rewrite the draft completely and output REWRITE.
+   - If this is a judgment task in disguise or cannot be fixed mechanically: output REJECT and state the reason.
+
+   Task: <task description>
+   ```
+4. Agent result:
+   - `PATCH` → Agent has edited `.draft` inline; proceed to step 5
+   - `REWRITE` → Agent has overwritten `.draft`; proceed to step 5
+   - `REJECT` → delete `.draft`, re-classify as judgment, run judgment path
+5. Rename `<target_file>.draft` → `<target_file>`
+6. Run test suite: `pytest tests/ -x -q`
+7. If tests fail:
+   - **Trivial** (fix inline): single-line syntax error, missing import whose usage is already present in the file, typo in variable/function name → fix inline, re-run pytest once
+   - **Non-trivial** (escalate): logic error, multiple file changes required, new dependency needed → escalate to judgment path; pass draft content as context to Agent
+8. Commit using Conventional Commits format
+9. Mark task complete in the plan
+
+Log this task to `~/.pedalpoint/fallback-log.md` only if circuit is OPEN or Agent review was skipped due to error (see Step 4b).
 
 ### Judgment path (Agent)
 
