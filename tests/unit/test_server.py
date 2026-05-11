@@ -1,11 +1,18 @@
 import json
+from typing import get_type_hints
 
 import httpx
 import pytest
 import respx
+from mcp.server.fastmcp import Context
 
 from pedalpoint.config import Config
-from pedalpoint.server import _call_local_llm
+from pedalpoint.server import _call_local_llm, local_llm
+
+def test_local_llm_ctx_typed_as_context() -> None:
+    hints = get_type_hints(local_llm)
+    assert hints.get("ctx") is Context
+
 
 TEST_CFG = Config(
     base_url="http://localhost:11434/v1",
