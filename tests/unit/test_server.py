@@ -9,6 +9,7 @@ from mcp.server.fastmcp import Context
 from pedalpoint.config import Config
 from pedalpoint.server import _call_local_llm, local_llm
 
+
 def test_local_llm_ctx_typed_as_context() -> None:
     hints = get_type_hints(local_llm)
     assert hints.get("ctx") is Context
