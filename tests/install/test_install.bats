@@ -54,7 +54,7 @@ teardown() {
 @test "skill file lands at correct path" {
   run sh "$INSTALL_SH"
   [ "$status" -eq 0 ]
-  [ -f "$HOME/.claude/plugins/pedalpoint/skills/route-tasks.md" ]
+  [ -f "$HOME/.claude/skills/route-tasks/SKILL.md" ]
 }
 
 @test "curl-pipe scenario: works from empty tmpdir with no skills/ subdir" {
@@ -62,7 +62,7 @@ teardown() {
   cd "$empty_dir"
   run sh "$INSTALL_SH"
   [ "$status" -eq 0 ]
-  [ -f "$HOME/.claude/plugins/pedalpoint/skills/route-tasks.md" ]
+  [ -f "$HOME/.claude/skills/route-tasks/SKILL.md" ]
 }
 
 @test "skill download curl failure aborts install" {
@@ -215,8 +215,8 @@ EOF
 # ── Uninstall ─────────────────────────────────────────────────────────────────
 
 @test "uninstall removes skill dir" {
-  mkdir -p "$HOME/.claude/plugins/pedalpoint/skills"
-  printf '# skill\n' > "$HOME/.claude/plugins/pedalpoint/skills/route-tasks.md"
+  mkdir -p "$HOME/.claude/skills/route-tasks"
+  printf '# skill\n' > "$HOME/.claude/skills/route-tasks/SKILL.md"
 
   answer=$(mktemp)
   printf 'n\n' > "$answer"
@@ -224,5 +224,5 @@ EOF
   rm -f "$answer"
 
   [ "$status" -eq 0 ]
-  [ ! -d "$HOME/.claude/plugins/pedalpoint" ]
+  [ ! -d "$HOME/.claude/skills/route-tasks" ]
 }
