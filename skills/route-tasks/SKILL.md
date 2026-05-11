@@ -199,7 +199,7 @@ local_llm(prompt=<augmented prompt>, system="You are a code generator. Follow th
 8. Commit using Conventional Commits format
 9. Mark task complete in the plan
 
-Log this task to `~/.pedalpoint/fallback-log.md` only if circuit is OPEN or Agent review was skipped due to error (see Step 4b).
+Log this task to `~/.pedalpoint/fallback-log.md` only if Agent review was skipped due to error (see Step 4b error table).
 
 ### Judgment path (Agent)
 
