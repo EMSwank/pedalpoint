@@ -16,7 +16,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-SKILL_DIR="${HOME}/.claude/plugins/pedalpoint"
+SKILL_DIR="${HOME}/.claude/skills/route-tasks"
 MCP_CONFIG="${HOME}/.claude/mcp.json"
 STATE_DIR="${HOME}/.pedalpoint"
 PEDALPOINT_RAW="https://raw.githubusercontent.com/EMSwank/pedalpoint/main"
@@ -35,7 +35,7 @@ if [ "$UNINSTALL" = "1" ]; then
 
   # Remove skill
   rm -rf "$SKILL_DIR"
-  printf '✓ Removed skill directory %s\n' "$SKILL_DIR"
+  printf '✓ Removed skill %s\n' "$SKILL_DIR"
 
   # Uninstall package
   if command -v uv >/dev/null 2>&1; then
@@ -131,9 +131,9 @@ fi
 
 # ── Step 6: Install companion skill ─────────────────────────────────────────
 printf '→ Installing companion skill...\n'
-mkdir -p "${SKILL_DIR}/skills"
-curl -fsSL "${PEDALPOINT_RAW}/skills/route-tasks.md" \
-  -o "${SKILL_DIR}/skills/route-tasks.md"
+mkdir -p "${SKILL_DIR}"
+curl -fsSL "${PEDALPOINT_RAW}/skills/route-tasks/SKILL.md" \
+  -o "${SKILL_DIR}/SKILL.md"
 
 # ── Step 7: Register MCP server ─────────────────────────────────────────────
 printf '→ Registering MCP server in %s...\n' "$MCP_CONFIG"
@@ -165,9 +165,9 @@ mkdir -p "$STATE_DIR"
 printf '\n'
 printf '✓ pedalpoint installed!\n'
 printf '✓ MCP server:  pedalpoint-server\n'
-printf '✓ Skill:       pedalpoint:route-tasks\n'
+printf '✓ Skill:       /route-tasks\n'
 printf '✓ Config:      %s\n' "$MCP_CONFIG"
 printf '✓ State dir:   %s\n' "$STATE_DIR"
 printf '\n'
 printf '→ Restart Claude Code to activate.\n'
-printf '→ Then invoke: pedalpoint:route-tasks\n'
+printf '→ Then invoke: /route-tasks\n'
