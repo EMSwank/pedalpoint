@@ -9,6 +9,7 @@ MCP server + companion superpowers skill. Two deliverables:
 ## Key Design Decisions
 
 - **Thin server, smart skill:** Server is a pure HTTP proxy. All routing logic lives in the skill. Server never touches `~/.pedalpoint/state.json`.
+- **Three-tier routing (junior/senior model):** Local LLM = junior dev, Agent = senior dev. Mechanical tasks go to local LLM directly. Structural tasks (framework-known patterns + spec-driven tasks) go to local LLM for a draft, then Agent reviews before commit (`.draft` lifecycle). Judgment tasks (architecture, debugging, security) go to Agent only.
 - **No streaming:** `local_llm` returns full string. Simpler, sufficient for code gen.
 - **Circuit breaker in skill:** Claude reads/writes state.json via Write tool. Python `circuit_breaker.py` module contains the pure functions that document and validate this logic.
 - **Context Courier:** Skill MUST grep codebase before sending any task to local LLM. Empty grep result = escalate to Agent.

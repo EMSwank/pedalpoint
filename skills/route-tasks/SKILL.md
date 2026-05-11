@@ -66,21 +66,39 @@ Read the task description. Apply these rules:
 
 **Examples:** generate CRUD following an existing CRUD file, write test function stubs, add type hints to existing functions, generate a config file following an existing template, write a serializer matching the existing serializer pattern.
 
+### Route to `local_llm` draft + Agent review (structural) when ANY apply:
+- Task involves a framework-known pattern:
+  - pytest fixture or test function
+  - FastAPI route, router, or dependency injection
+  - Pydantic model or schema
+  - Python dataclass
+  - Alembic migration stub
+  - Docstring block
+  - README section or documentation file
+- Task is spec-driven: field names, types, and behavior are fully spelled out in the task description — no open questions, no ambiguity
+
+**Examples:** "Add a pytest fixture that creates a test database session", "Add a Pydantic model for UserCreate with fields: name (str), email (EmailStr), age (int, optional)", "Write a README section explaining the circuit breaker behavior."
+
 ### Route to Agent (judgment) when ANY applies:
 - Architecture or design decision required
 - Debugging with unknown root cause
 - Cross-system integration
-- Security-sensitive code
-- Novel logic — no existing codebase pattern
+- Security-sensitive code (auth, payments, tokens, credentials)
+- Novel logic — no codebase pattern and no applicable framework standard
+- Ambiguous requirements — open questions that need clarification before implementing
 - Requires reading multiple files to understand what to build
 
 **When in doubt: route to Agent.**
 
 ---
 
-## Step 3: Context Courier (mechanical tasks only)
+## Step 3: Context Courier
 
-You MUST gather pattern context before calling `local_llm`. Do not assume a pattern exists — verify it.
+Runs for both mechanical and structural tasks. Do not assume a pattern exists — verify it.
+
+When entering Step 3 without a prior classification from Step 2 (e.g., `local-only` mode), use the **Mechanical tasks** section.
+
+### Mechanical tasks
 
 1. Identify the pattern type from the task (CRUD, serializer, test stub, migration, etc.)
 2. Search the codebase:
@@ -88,24 +106,45 @@ You MUST gather pattern context before calling `local_llm`. Do not assume a patt
    grep -r "<relevant keyword>" src/ --include="*.py" -l 2>/dev/null
    ```
 3. **Check the result explicitly:**
-   - **No files returned / empty output:** The task is not actually mechanical. Escalate to Agent (Step 4b, judgment path). Do not proceed with local_llm.
+   - **No files returned / empty output:** The task is not actually mechanical. Escalate to Agent (judgment path). Do not proceed with local_llm.
    - **Files returned:** Read the most relevant file. Extract 30–50 lines of the closest matching example.
 
-4. Assemble the augmented prompt. Keep total length under 16000 characters:
+### Structural tasks
 
+1. Identify the convention type (Response model, exception handling, route pattern, model inheritance, fixture style, etc.)
+2. Search the codebase for style conventions:
+   ```bash
+   grep -r "<relevant keyword>" . --include="*.py" -l 2>/dev/null
    ```
-   system: "You are a code generator. Follow the provided patterns exactly. Output only code. No explanation."
+   Example keywords: `HTTPException` for error handling, `BaseModel` for Pydantic conventions, `pytest.fixture` for fixture style, `APIRouter` for route structure.
+3. **Check the result:**
+   - **Files returned:** Read the most relevant file. Extract 30–50 lines showing the project's style.
+   - **No files returned, framework-known task:** Proceed. Add to prompt: "No existing project pattern found. Follow framework defaults."
+   - **No files returned, spec-driven only (not framework-known):** Escalate to Agent (judgment path). Do not proceed with local_llm.
 
-   prompt: |
-     ## Existing pattern (<filepath> lines <N>-<M>):
-     <excerpt from file>
+### Assemble the augmented prompt (both tiers)
 
-     ## Task:
-     <task description>
-     Follow the exact naming conventions, structure, and patterns shown above.
-   ```
+Keep total length under 16000 characters:
 
-5. Proceed to Step 4 (local_llm execution path).
+```
+system: "You are a code generator. Follow the provided patterns exactly. Output only code. No explanation."
+
+prompt: |
+  ## Existing pattern (<filepath> lines <N>-<M>):
+  <excerpt from file>
+
+  ## Task:
+  <task description>
+  Follow the exact naming conventions, structure, and patterns shown above.
+```
+
+For structural tasks where no project pattern was found, replace the "Existing pattern" block with:
+```
+  ## Note:
+  No existing project pattern found. Follow framework defaults for <framework name>.
+```
+
+Proceed to Step 4.
 
 ---
 
@@ -122,11 +161,45 @@ Apply the returned string:
 1. `git checkout -b feat/<task-slug>` (or appropriate branch prefix)
 2. Write the returned code to the target file using Write/Edit tools
 3. Run the test suite: `pytest tests/ -x -q`
-4. If tests fail with trivial issues (missing import, typo): fix inline. If non-trivial: escalate to Agent.
+4. If tests fail:
+   - **Trivial** (fix inline): single-line syntax error, missing import whose usage is already present in the file, typo in variable/function name → fix inline, re-run pytest once
+   - **Non-trivial** (escalate): logic error, multiple file changes required, new dependency needed → escalate to Agent
 5. Commit using Conventional Commits format
 6. Mark task complete in the plan
 
 Log this task to `~/.pedalpoint/fallback-log.md` only if circuit is OPEN (fallback active).
+
+### Structural path (local_llm draft + Agent review)
+
+Call the `local_llm` tool with the augmented prompt from Step 3:
+```
+local_llm(prompt=<augmented prompt>, system="You are a code generator. Follow the provided patterns exactly. Output only code. No explanation.")
+```
+
+1. `git checkout -b feat/<task-slug>` (or appropriate branch prefix)
+2. Write the returned code to `<target_file>.draft` (NOT the real filename)
+3. Spawn Agent review:
+   ```
+   Review <target_file>.draft against the task description below.
+   - If structurally sound with only minor issues: patch the draft inline and output PATCH.
+   - If significantly wrong but salvageable: rewrite the draft completely and output REWRITE.
+   - If this is a judgment task in disguise or cannot be fixed mechanically: output REJECT and state the reason.
+
+   Task: <task description>
+   ```
+4. Agent result:
+   - `PATCH` → Agent has edited `.draft` inline; proceed to step 5
+   - `REWRITE` → Agent has overwritten `.draft`; proceed to step 5
+   - `REJECT` → delete `.draft`, re-classify as judgment, run judgment path
+5. Rename `<target_file>.draft` → `<target_file>`
+6. Run test suite: `pytest tests/ -x -q`
+7. If tests fail:
+   - **Trivial** (fix inline): single-line syntax error, missing import whose usage is already present in the file, typo in variable/function name → fix inline, re-run pytest once
+   - **Non-trivial** (escalate): logic error, multiple file changes required, new dependency needed → escalate to judgment path; pass draft content as context to Agent
+8. Commit using Conventional Commits format
+9. Mark task complete in the plan
+
+Log this task to `~/.pedalpoint/fallback-log.md` only if Agent review was skipped due to error (see Step 4b error table).
 
 ### Judgment path (Agent)
 
@@ -148,6 +221,17 @@ Parse the error text from the failed Agent spawn:
 | `402`, `quota`, `billing`, `insufficient` | Write OPEN state to `~/.pedalpoint/state.json` (see below). Re-route this task to local_llm via Step 3. |
 | `529`, `overload`, `capacity` | Route this task only to local_llm. Circuit stays CLOSED for next task. |
 | `timeout`, `connection` | Print `⚠ local LLM unreachable — falling back to Claude (run \`ollama serve\` to restore)`. Retry once. If still failing, treat as 529. |
+
+**Structural path Agent review errors:**
+
+When the Agent review spawn (step 3 of the structural path) fails:
+
+| Error pattern | Action |
+|---|---|
+| `429` or `rate.?limit` | Wait 30s, retry review once. Still failing: rename `.draft` → target file, flag commit message `[unreviewed]`, log standard structural fallback entry. |
+| `402`, `quota`, `billing`, `insufficient` | Write OPEN state (see below). Rename `.draft` → target file (use draft content as-is; do not re-run local_llm). Log HIGH PRIORITY structural fallback entry. |
+| `529`, `overload`, `capacity` | Rename `.draft` → target file, flag commit message `[unreviewed]`, log standard structural fallback entry. Circuit stays CLOSED. |
+| `timeout`, `connection` | Delete `.draft`. Re-classify as judgment. Run judgment path. |
 
 **Writing OPEN state** (on 402 quota error):
 ```json
@@ -171,6 +255,23 @@ Write this to `~/.pedalpoint/state.json` using the Write tool.
 ---
 ```
 
+**Logging structural fallbacks (429/529 review skip)** — append to `~/.pedalpoint/fallback-log.md`:
+```markdown
+## <ISO timestamp> — structural draft committed unreviewed (reason: <reason>)
+**Task:** <task description>
+**Draft preview:** <first 200 chars of local_llm response>
+---
+```
+
+**Logging structural fallbacks (402 quota or circuit OPEN mid-task)** — append to `~/.pedalpoint/fallback-log.md`:
+```markdown
+## <ISO timestamp> — structural draft committed unreviewed (reason: <reason>) ⚠ HIGH PRIORITY
+**Task:** <task description>
+**Risk:** Agent review skipped due to quota. Logic correctness unverified.
+**Draft preview:** <first 200 chars of local_llm response>
+---
+```
+
 ---
 
 ## Step 5: Post-Session Review
@@ -178,8 +279,9 @@ Write this to `~/.pedalpoint/state.json` using the Write tool.
 After all tasks in the plan are complete:
 
 1. Check `~/.pedalpoint/fallback-log.md` for entries added in this session
-2. Count entries since session start
-3. If count > 0:
-   > "N tasks ran on local LLM during fallback. Run Claude review pass now? (y/n)"
-4. If user says yes: spawn Agent with prompt:
-   > "Review the work done by local LLM during fallback. Check `~/.pedalpoint/fallback-log.md` for the task list, then run `git log --oneline -<N>` and `git diff HEAD~<N>` to see the changes. Identify any issues with code quality, correctness, or missed requirements and summarize your findings."
+2. Count total entries since session start (N)
+3. Count entries containing `⚠ HIGH PRIORITY` (K)
+4. If N > 0:
+   > "N tasks ran on local LLM during fallback. K structural drafts marked HIGH PRIORITY (quota fallback — Agent review skipped). Review HIGH PRIORITY items first. Run Claude review pass now? (y/n)"
+5. If user says yes: spawn Agent with prompt:
+   > "Review the work done by local LLM during fallback. Check `~/.pedalpoint/fallback-log.md` for the task list — prioritize any entries marked ⚠ HIGH PRIORITY first, as these were committed without Agent review due to quota exhaustion. Then run `git log --oneline -<N>` and `git diff HEAD~<N>` to see the changes. Identify any issues with code quality, correctness, or missed requirements and summarize your findings."

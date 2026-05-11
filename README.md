@@ -58,7 +58,7 @@ Should show `Status: ✓ Connected`. If disconnected, run `pedalpoint-server` di
 
 | Mode | Set via | Behavior |
 |---|---|---|
-| `hybrid` | default | Claude classifies each task |
+| `hybrid` | default | Claude classifies each task into mechanical (local LLM direct), structural (local LLM draft + Agent review), or judgment (Agent only) |
 | `local-only` | `PEDALPOINT_MODE=local-only` | All tasks → local LLM (use when quota exhausted preemptively) |
 | `passthrough` | `PEDALPOINT_MODE=passthrough` | All tasks → Claude Agent (disables pedalpoint) |
 
