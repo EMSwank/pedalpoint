@@ -32,13 +32,21 @@ Restart Claude Code after install.
 
 ## Usage
 
-Instead of `superpowers:subagent-driven-development`, invoke:
+Ollama must be running before you open Claude Code:
+
+```sh
+ollama serve          # or open Ollama.app on macOS
+```
+
+Then in any Claude Code session:
 
 ```
 /route-tasks
 ```
 
 pedalpoint handles routing automatically. No manual flagging needed.
+
+To verify the MCP server connected, check Claude Code's MCP status — `pedalpoint` should show green. If it shows disconnected, run `pedalpoint-server` directly to see the error.
 
 ## Modes
 
