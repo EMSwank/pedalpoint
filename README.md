@@ -30,6 +30,8 @@ curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh 
 
 Restart Claude Code after install.
 
+> **Note:** If installing without the script, use `uv tool install pedalpoint` — not `pip install -e .`. The tool install puts `pedalpoint-server` in PATH where Claude Code can find it.
+
 ## Usage
 
 Ollama must be running before you open Claude Code:
