@@ -82,6 +82,16 @@ Should show `Status: ✓ Connected`. If disconnected, run `pedalpoint-server` di
 curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | sh -s -- --uninstall
 ```
 
+## Troubleshooting
+
+| Symptom | Fix |
+| :--- | :--- |
+| `local_llm` calls fail with "Ollama not reachable" | `ollama serve` (or open Ollama.app on macOS) |
+| `local_llm` fails with "Model gemma4:e4b not found" | `ollama pull gemma4:e4b` |
+| `/route-tasks` says `local_llm` tool not available | `claude mcp get pedalpoint` (check status; if missing, re-run install) |
+| `claude_api` returns "ANTHROPIC_API_KEY not set" — api_fallback tier disabled | `export ANTHROPIC_API_KEY=sk-ant-...` then restart Claude Code |
+| All tasks route to local LLM even after Claude quota resets | `echo '{"circuit":"closed"}' > ~/.pedalpoint/state.json` |
+
 ## Development
 
 ```sh
