@@ -2,7 +2,14 @@ import re
 
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"401|unauthorized|invalid.{0,10}key", re.IGNORECASE), "auth_error"),
-    (re.compile(r"402|quota|billing|insufficient", re.IGNORECASE), "hard_quota"),
+    (
+        re.compile(
+            r"402|quota|billing|insufficient"
+            r"|upgrade.*plan|plan.*limit|usage.{0,20}limit",
+            re.IGNORECASE,
+        ),
+        "hard_quota",
+    ),
     (re.compile(r"429|rate.?limit", re.IGNORECASE), "rate_limit"),
     (re.compile(r"529|overload|capacity", re.IGNORECASE), "overload"),
     (re.compile(r"timeout|connection", re.IGNORECASE), "network"),

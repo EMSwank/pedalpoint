@@ -18,6 +18,11 @@ from pedalpoint.error_classifier import classify_error
         ("billing hard limit reached", "hard_quota"),
         ("insufficient credits", "hard_quota"),
         ("You have exceeded your quota", "hard_quota"),
+        # hard_quota — Claude Code upgrade-prompt variants
+        ("Upgrade your plan to continue", "hard_quota"),
+        ("You've reached your plan limit", "hard_quota"),
+        ("You've reached your usage limit", "hard_quota"),
+        ("Your usage limit has been reached", "hard_quota"),
         # rate_limit — 429 and variants
         ("429 Too Many Requests", "rate_limit"),
         ("rate limit exceeded", "rate_limit"),
@@ -31,6 +36,9 @@ from pedalpoint.error_classifier import classify_error
         ("connection timeout", "network"),
         ("Connection refused", "network"),
         ("Read timeout", "network"),
+        # rate_limit phrased with "reached" must NOT become hard_quota
+        ("rate limit reached", "rate_limit"),
+        ("rate-limit reached", "rate_limit"),
         # unknown
         ("some unrecognized error message", "unknown"),
         ("500 Internal Server Error", "unknown"),
