@@ -43,6 +43,11 @@ Parse the JSON:
 - If current time < expires: skip to Step 4 (local_llm, no classification)
 - If current time >= expires: proceed to Step 1b (HALF-OPEN probe)
 
+**If `circuit` is `"api_fallback"`:**
+- Check `expires` field vs current time (`date -u +%Y-%m-%dT%H:%M:%SZ`)
+- If current time < expires: proceed to Step 2 with **API mode active** (substitute `claude_api` for Agent in Steps 2 and 4)
+- If current time >= expires: proceed to Step 1b (HALF-OPEN probe)
+
 ### Step 1b: HALF-OPEN Probe
 
 Spawn a minimal Agent with prompt: `"Respond with only the word ok"`.
@@ -54,6 +59,8 @@ Spawn a minimal Agent with prompt: `"Respond with only the word ok"`.
 ---
 
 ## Step 2: Classify the Task
+
+> **API mode** (circuit is `api_fallback`): wherever Step 2 says "Agent", substitute `claude_api`. Mechanical routing is unchanged.
 
 Read the task description. Apply these rules:
 
@@ -218,9 +225,28 @@ Parse the error text from the failed Agent spawn:
 | Error pattern | Action |
 |---|---|
 | `429` or `rate.?limit` | Wait 30s, retry (up to 3 times). After 3 failures: route this task only to local_llm (circuit stays CLOSED) |
-| `402`, `quota`, `billing`, `insufficient` | Write OPEN state to `~/.pedalpoint/state.json` (see below). Re-route this task to local_llm via Step 3. |
+| `402`, `quota`, `billing`, `insufficient` | Write OPEN state if circuit was already `api_fallback`; write `api_fallback` state if circuit was `closed`. Re-route this task: if writing `api_fallback`, re-route to `claude_api`; if writing `open`, re-route to local_llm via Step 3. |
 | `529`, `overload`, `capacity` | Route this task only to local_llm. Circuit stays CLOSED for next task. |
 | `timeout`, `connection` | Print `⚠ local LLM unreachable — falling back to Claude (run \`ollama serve\` to restore)`. Retry once. If still failing, treat as 529. |
+
+**`claude_api` errors (circuit is `api_fallback`):**
+
+| Error pattern | Action |
+|---|---|
+| `429` or `rate.?limit` | Wait 30s, retry once. Still failing: for judgment tasks, reroute to local_llm this task only; circuit stays `api_fallback`. |
+| `402`, `quota`, `billing`, `insufficient`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state with `failure_count=1` to `~/.pedalpoint/state.json`. Re-route this task to local_llm via Step 3. |
+| `529`, `overload`, `capacity` | Reroute this task only to local_llm. Circuit stays `api_fallback`. |
+| `timeout`, `connection`, `not reachable` | Retry once. Still failing: reroute this task to local_llm. Circuit stays `api_fallback`. |
+| `ANTHROPIC_API_KEY not set` | Write OPEN state with `failure_count=1`. Re-route this task to local_llm via Step 3. |
+
+**`claude_api` structural review errors (circuit is `api_fallback`):**
+
+| Error pattern | Action |
+|---|---|
+| `429` or `rate.?limit` | Wait 30s, retry review once. Still failing: rename `.draft` → target file, flag commit `[unreviewed]`, log standard structural fallback entry. |
+| `402`, `quota`, `billing`, `insufficient`, `401`, `unauthorized`, `invalid.*key`, `ANTHROPIC_API_KEY not set` | Write OPEN state with `failure_count=1`. Rename `.draft` → target file. Log `⚠ HIGH PRIORITY` structural fallback entry. |
+| `529`, `overload`, `capacity` | Rename `.draft` → target file, flag commit `[unreviewed]`, log standard structural fallback entry. Circuit stays `api_fallback`. |
+| `timeout`, `connection`, `not reachable` | Delete `.draft`. Re-classify as judgment. Run `claude_api` judgment path. |
 
 **Structural path Agent review errors:**
 
@@ -279,6 +305,7 @@ Write this to `~/.pedalpoint/state.json` using the Write tool.
 After all tasks in the plan are complete:
 
 1. Check `~/.pedalpoint/fallback-log.md` for entries added in this session
+   Note: tasks handled by `claude_api` during `api_fallback` are NOT logged here — their output quality is equivalent to Agent. Only local_llm reroutes are logged.
 2. Count total entries since session start (N)
 3. Count entries containing `⚠ HIGH PRIORITY` (K)
 4. If N > 0:
