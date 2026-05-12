@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 import anthropic
@@ -5,6 +6,8 @@ import httpx
 from mcp.server.fastmcp import Context, FastMCP
 
 from .config import Config, get_config
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -14,6 +17,14 @@ async def lifespan(app):  # type: ignore[type-arg]
         base_url=cfg.base_url,
         timeout=httpx.Timeout(connect=5.0, read=cfg.timeout, write=10.0, pool=5.0),
     ) as client:
+        try:
+            await client.get("/models", timeout=5.0)
+        except (httpx.ConnectError, httpx.TimeoutException):
+            logger.warning(
+                "⚠ Ollama unreachable at %s. Run `ollama serve` or open "
+                "Ollama.app. local_llm calls will fail until Ollama is running.",
+                cfg.base_url,
+            )
         yield {"http": client, "cfg": cfg}
 
 
