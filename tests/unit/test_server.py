@@ -170,6 +170,7 @@ async def test_claude_api_passes_model_from_config() -> None:
 @pytest.mark.asyncio
 async def test_claude_api_http_error_raises_valueerror() -> None:
     import anthropic as anthropic_sdk
+
     mock_client = MagicMock()
     mock_client.messages.create = AsyncMock(
         side_effect=anthropic_sdk.APIStatusError(
@@ -186,6 +187,7 @@ async def test_claude_api_http_error_raises_valueerror() -> None:
 @pytest.mark.asyncio
 async def test_claude_api_connection_error_raises_valueerror() -> None:
     import anthropic as anthropic_sdk
+
     mock_client = MagicMock()
     mock_client.messages.create = AsyncMock(
         side_effect=anthropic_sdk.APIConnectionError(request=MagicMock())
