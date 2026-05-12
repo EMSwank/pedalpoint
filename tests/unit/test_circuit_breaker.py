@@ -8,6 +8,7 @@ from pedalpoint.circuit_breaker import (
     increment_rerouted,
     is_expired,
     read_state,
+    transition_to_api_fallback,
     transition_to_closed,
     transition_to_open,
     write_state,
@@ -183,3 +184,71 @@ def test_increment_rerouted_accumulates() -> None:
     state = increment_rerouted(state)
     state = increment_rerouted(state)
     assert state["tasks_rerouted"] == 2
+
+
+# --- transition_to_api_fallback ---
+
+
+def test_transition_to_api_fallback_sets_circuit() -> None:
+    state = transition_to_api_fallback("402_quota")
+    assert state["circuit"] == "api_fallback"
+
+
+def test_transition_to_api_fallback_sets_reason() -> None:
+    state = transition_to_api_fallback("402_quota")
+    assert state["reason"] == "402_quota"
+
+
+def test_transition_to_api_fallback_failure_count_default() -> None:
+    state = transition_to_api_fallback("402_quota")
+    assert state["failure_count"] == 1
+
+
+def test_transition_to_api_fallback_duration_60_for_count_1() -> None:
+    state = transition_to_api_fallback("402_quota", failure_count=1)
+    assert state["fallback_duration_minutes"] == 60
+
+
+def test_transition_to_api_fallback_expires_in_future() -> None:
+    state = transition_to_api_fallback("402_quota")
+    expires = datetime.fromisoformat(state["expires"])
+    assert expires > datetime.now(timezone.utc)
+
+
+def test_transition_to_api_fallback_tasks_rerouted() -> None:
+    state = transition_to_api_fallback("402_quota", tasks_rerouted=3)
+    assert state["tasks_rerouted"] == 3
+
+
+def test_is_expired_on_api_fallback_future() -> None:
+    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    assert not is_expired({"circuit": "api_fallback", "expires": expires})
+
+
+def test_is_expired_on_api_fallback_past() -> None:
+    expires = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    assert is_expired({"circuit": "api_fallback", "expires": expires})
+
+
+def test_double_duration_on_api_fallback_preserves_circuit() -> None:
+    state = transition_to_api_fallback("402_quota", failure_count=1)
+    doubled = double_duration(state)
+    assert doubled["circuit"] == "api_fallback"
+
+
+def test_double_duration_on_api_fallback_increments_count() -> None:
+    state = transition_to_api_fallback("402_quota", failure_count=1)
+    doubled = double_duration(state)
+    assert doubled["failure_count"] == 2
+
+
+def test_double_duration_on_api_fallback_doubles_minutes() -> None:
+    state = transition_to_api_fallback("402_quota", failure_count=1)
+    doubled = double_duration(state)
+    assert doubled["fallback_duration_minutes"] == 120
+
+
+def test_increment_rerouted_on_api_fallback() -> None:
+    state = transition_to_api_fallback("402_quota")
+    updated = increment_rerouted(state)
+    assert updated["tasks_rerouted"] == 1
