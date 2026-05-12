@@ -72,7 +72,9 @@ async def _call_claude_api(prompt: str, system: str, cfg: Config) -> str:
     except anthropic.APIStatusError as exc:
         raise ValueError(f"HTTP {exc.status_code}: {exc}") from exc
     except anthropic.APIConnectionError:
-        raise ValueError("Anthropic API not reachable — check network connection") from None
+        raise ValueError(
+            "Anthropic API not reachable — check network connection"
+        ) from None
 
 
 @mcp.tool()
@@ -81,7 +83,7 @@ async def claude_api(
     prompt: str,
     system: str = "",
 ) -> str:
-    """Call Claude API directly. Use when circuit is api_fallback (Claude Pro quota exhausted but API key available)."""
+    """Call Claude API directly. Use when circuit is api_fallback."""
     cfg: Config = ctx.request_context.lifespan_context["cfg"]
     return await _call_claude_api(
         prompt,
