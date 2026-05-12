@@ -5,7 +5,7 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(
             r"402|quota|billing|insufficient"
-            r"|upgrade.*plan|plan.*limit|usage.{0,20}limit|limit.*reached",
+            r"|upgrade.*plan|plan.*limit|usage.{0,20}limit",
             re.IGNORECASE,
         ),
         "hard_quota",

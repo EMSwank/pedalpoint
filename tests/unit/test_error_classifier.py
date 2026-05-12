@@ -36,6 +36,9 @@ from pedalpoint.error_classifier import classify_error
         ("connection timeout", "network"),
         ("Connection refused", "network"),
         ("Read timeout", "network"),
+        # rate_limit phrased with "reached" must NOT become hard_quota
+        ("rate limit reached", "rate_limit"),
+        ("rate-limit reached", "rate_limit"),
         # unknown
         ("some unrecognized error message", "unknown"),
         ("500 Internal Server Error", "unknown"),

@@ -53,10 +53,11 @@ Parse the JSON:
 Spawn a minimal Agent with prompt: `"Respond with only the word ok"`.
 
 - **Agent succeeds:** Write `{"circuit":"closed"}` to `~/.pedalpoint/state.json`. Proceed to Step 2.
-- **Agent fails with 402/quota/billing/insufficient/upgrade.*plan/plan.*limit/usage.*limit/limit.*reached:**
+- **Agent fails with 402/quota/billing/insufficient/upgrade.*plan/plan.*limit/usage.{0,20}limit:**
   - If current state is `open`: double duration, increment `failure_count`, write updated OPEN state. Proceed to Step 4 (local_llm).
   - If current state is `api_fallback`: double duration, increment `failure_count`, write updated `api_fallback` state (circuit stays `api_fallback` — claude_api still available). Proceed to Step 2.
 - **Agent fails with 429/rate-limit:** Wait 30 seconds. Retry probe once. If still failing, treat as transient — proceed to Step 2.
+- **(any other / unrecognized error):** Treat as hard quota. Double duration, increment `failure_count`, write updated state. Log `⚠ HIGH PRIORITY` entry with full error text. Proceed to Step 4 (local_llm) if circuit is `open`; proceed to Step 2 if circuit is `api_fallback`.
 
 ---
 
@@ -227,7 +228,7 @@ Parse the error text from the failed Agent spawn:
 | Error pattern | Action |
 |---|---|
 | `429` or `rate.?limit` | Wait 30s, retry (up to 3 times). After 3 failures: route this task only to local_llm (circuit stays CLOSED) |
-| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.*limit`, `limit.*reached`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state if circuit was already `api_fallback`; write `api_fallback` state if circuit was `closed`. Re-route this task: if writing `api_fallback`, re-route to `claude_api`; if writing `open`, re-route to local_llm via Step 3. |
+| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state if circuit was already `api_fallback`; write `api_fallback` state if circuit was `closed`. Re-route this task: if writing `api_fallback`, re-route to `claude_api`; if writing `open`, re-route to local_llm via Step 3. |
 | `529`, `overload`, `capacity` | Route this task only to local_llm. Circuit stays CLOSED for next task. |
 | `timeout`, `connection` | Print `⚠ local LLM unreachable — falling back to Claude (run \`ollama serve\` to restore)`. Retry once. If still failing, treat as 529. |
 | **(any other / unrecognized error)** | Treat as hard quota. Write `api_fallback` state if circuit is `closed`; write OPEN state if circuit is `api_fallback`. Re-route this task to `claude_api` or local_llm accordingly. Log `⚠ HIGH PRIORITY` entry with full error text. |
@@ -237,7 +238,7 @@ Parse the error text from the failed Agent spawn:
 | Error pattern | Action |
 |---|---|
 | `429` or `rate.?limit` | Wait 30s, retry once. Still failing: for judgment tasks, reroute to local_llm this task only; circuit stays `api_fallback`. |
-| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.*limit`, `limit.*reached`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state with `failure_count=1` to `~/.pedalpoint/state.json`. Re-route this task to local_llm via Step 3. |
+| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state with `failure_count=1` to `~/.pedalpoint/state.json`. Re-route this task to local_llm via Step 3. |
 | `529`, `overload`, `capacity` | Reroute this task only to local_llm. Circuit stays `api_fallback`. |
 | `timeout`, `connection`, `not reachable` | Retry once. Still failing: reroute this task to local_llm. Circuit stays `api_fallback`. |
 | `ANTHROPIC_API_KEY not set` | Write OPEN state with `failure_count=1`. Re-route this task to local_llm via Step 3. |
@@ -248,7 +249,7 @@ Parse the error text from the failed Agent spawn:
 | Error pattern | Action |
 |---|---|
 | `429` or `rate.?limit` | Wait 30s, retry review once. Still failing: rename `.draft` → target file, flag commit `[unreviewed]`, log standard structural fallback entry. |
-| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.*limit`, `limit.*reached`, `401`, `unauthorized`, `invalid.*key`, `ANTHROPIC_API_KEY not set` | Write OPEN state with `failure_count=1`. Rename `.draft` → target file. Log `⚠ HIGH PRIORITY` structural fallback entry. |
+| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit`, `401`, `unauthorized`, `invalid.*key`, `ANTHROPIC_API_KEY not set` | Write OPEN state with `failure_count=1`. Rename `.draft` → target file. Log `⚠ HIGH PRIORITY` structural fallback entry. |
 | `529`, `overload`, `capacity` | Rename `.draft` → target file, flag commit `[unreviewed]`, log standard structural fallback entry. Circuit stays `api_fallback`. |
 | `timeout`, `connection`, `not reachable` | Delete `.draft`. Re-classify as judgment. Run `claude_api` judgment path. |
 | **(any other / unrecognized error)** | Write OPEN state with `failure_count=1`. Rename `.draft` → target file. Log `⚠ HIGH PRIORITY` structural fallback entry with full error text. |
@@ -260,7 +261,7 @@ When the Agent review spawn (step 3 of the structural path) fails:
 | Error pattern | Action |
 |---|---|
 | `429` or `rate.?limit` | Wait 30s, retry review once. Still failing: rename `.draft` → target file, flag commit message `[unreviewed]`, log standard structural fallback entry. |
-| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.*limit`, `limit.*reached` | Write OPEN state (see below). Rename `.draft` → target file (use draft content as-is; do not re-run local_llm). Log HIGH PRIORITY structural fallback entry. |
+| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit` | Write OPEN state (see below). Rename `.draft` → target file (use draft content as-is; do not re-run local_llm). Log HIGH PRIORITY structural fallback entry. |
 | `529`, `overload`, `capacity` | Rename `.draft` → target file, flag commit message `[unreviewed]`, log standard structural fallback entry. Circuit stays CLOSED. |
 | `timeout`, `connection` | Delete `.draft`. Re-classify as judgment. Run judgment path. |
 | **(any other / unrecognized error)** | Write OPEN state (see below). Rename `.draft` → target file. Log `⚠ HIGH PRIORITY` structural fallback entry with full error text. |
