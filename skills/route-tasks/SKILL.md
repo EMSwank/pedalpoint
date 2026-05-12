@@ -53,7 +53,9 @@ Parse the JSON:
 Spawn a minimal Agent with prompt: `"Respond with only the word ok"`.
 
 - **Agent succeeds:** Write `{"circuit":"closed"}` to `~/.pedalpoint/state.json`. Proceed to Step 2.
-- **Agent fails with 402/quota/billing/insufficient:** Read existing state, double the `fallback_duration_minutes` and increment `failure_count`, write updated OPEN state. Proceed to Step 4.
+- **Agent fails with 402/quota/billing/insufficient:**
+  - If current state is `open`: double duration, increment `failure_count`, write updated OPEN state. Proceed to Step 4 (local_llm).
+  - If current state is `api_fallback`: double duration, increment `failure_count`, write updated `api_fallback` state (circuit stays `api_fallback` — claude_api still available). Proceed to Step 2.
 - **Agent fails with 429/rate-limit:** Wait 30 seconds. Retry probe once. If still failing, treat as transient — proceed to Step 2.
 
 ---
@@ -225,7 +227,7 @@ Parse the error text from the failed Agent spawn:
 | Error pattern | Action |
 |---|---|
 | `429` or `rate.?limit` | Wait 30s, retry (up to 3 times). After 3 failures: route this task only to local_llm (circuit stays CLOSED) |
-| `402`, `quota`, `billing`, `insufficient` | Write OPEN state if circuit was already `api_fallback`; write `api_fallback` state if circuit was `closed`. Re-route this task: if writing `api_fallback`, re-route to `claude_api`; if writing `open`, re-route to local_llm via Step 3. |
+| `402`, `quota`, `billing`, `insufficient`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state if circuit was already `api_fallback`; write `api_fallback` state if circuit was `closed`. Re-route this task: if writing `api_fallback`, re-route to `claude_api`; if writing `open`, re-route to local_llm via Step 3. |
 | `529`, `overload`, `capacity` | Route this task only to local_llm. Circuit stays CLOSED for next task. |
 | `timeout`, `connection` | Print `⚠ local LLM unreachable — falling back to Claude (run \`ollama serve\` to restore)`. Retry once. If still failing, treat as 529. |
 
