@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+import anthropic
 import httpx
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -54,6 +55,38 @@ async def _call_local_llm(
         raise ValueError(
             f"HTTP {exc.response.status_code}: {exc.response.text}"
         ) from exc
+
+
+async def _call_claude_api(prompt: str, system: str, cfg: Config) -> str:
+    if not cfg.api_key:
+        return "ERROR: ANTHROPIC_API_KEY not set — claude_api unavailable."
+    client = anthropic.AsyncAnthropic(api_key=cfg.api_key)
+    try:
+        message = await client.messages.create(
+            model=cfg.api_model,
+            max_tokens=16384,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text
+    except anthropic.APIStatusError as exc:
+        raise ValueError(f"HTTP {exc.status_code}: {exc.message}") from exc
+    except anthropic.APIConnectionError:
+        raise ValueError("Anthropic API not reachable — check network connection") from None
+
+
+@mcp.tool()
+async def claude_api(
+    ctx: Context,
+    prompt: str,
+    system: str = "",
+) -> str:
+    cfg: Config = ctx.request_context.lifespan_context["cfg"]
+    return await _call_claude_api(
+        prompt,
+        system or "You are a code generator. Output only code. No explanation.",
+        cfg,
+    )
 
 
 @mcp.tool()
