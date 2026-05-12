@@ -5,7 +5,7 @@ Route mechanical development tasks to a local LLM (Ollama, LM Studio, Jan) via C
 ## What it does
 
 - **Hybrid routing:** Claude classifies each task. Mechanical work (scaffolding, CRUD, test stubs) goes to your local LLM. Judgment work (architecture, debugging, integration) stays with Claude.
-- **Quota fallback:** When Claude returns a quota error, pedalpoint automatically switches to local-only mode and continues working. Switches back when quota restores.
+- **Three-tier quota fallback:** When Claude Pro returns a quota error, pedalpoint first routes judgment and structural tasks to Claude API (pay-per-token) while mechanical tasks continue on local LLM. If the API key is absent or Claude API quota is also exhausted, all tasks fall back to local LLM. Restores to normal when quota recovers.
 - **Context Courier:** Before sending any task to the local LLM, pedalpoint greps your codebase for existing patterns and injects them into the prompt. Local LLMs only get tasks they have templates for.
 - **Single install:** One script installs the MCP server, pulls the default model, and registers the companion skill.
 
@@ -71,6 +71,8 @@ Should show `Status: ✓ Connected`. If disconnected, run `pedalpoint-server` di
 | `PEDALPOINT_MODE` | `hybrid` | Routing mode |
 | `PEDALPOINT_TIMEOUT` | `120` | Read timeout in seconds |
 | `PEDALPOINT_INITIAL_FALLBACK_MINUTES` | `60` | Initial circuit-open duration (doubles on each probe failure) |
+| `PEDALPOINT_API_MODEL` | `claude-sonnet-4-6` | Claude model used for API fallback |
+| `ANTHROPIC_API_KEY` | (unset) | Anthropic API key for Claude API fallback tier. Optional — if unset, circuit skips `api_fallback` and goes directly to `open`. |
 
 ## Uninstall
 
