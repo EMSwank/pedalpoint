@@ -1,7 +1,6 @@
 """Unit tests for pedalpoint.doctor — run before implementing doctor.py."""
-import shutil
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -228,7 +227,9 @@ def test_format_report_warn_only_exit_0():
 
     results = [
         CheckResult("PASS", "pedalpoint-server in PATH", None),
-        CheckResult("WARN", "ANTHROPIC_API_KEY not set", "export ANTHROPIC_API_KEY=sk-ant-..."),
+        CheckResult(
+            "WARN", "ANTHROPIC_API_KEY not set", "export ANTHROPIC_API_KEY=sk-ant-..."
+        ),
     ]
     text, code = format_report(results)
     assert code == 0
@@ -242,7 +243,9 @@ def test_format_report_with_fail_returns_exit_1():
     results = [
         CheckResult("PASS", "pedalpoint-server in PATH", None),
         CheckResult("FAIL", "Model gemma4:e4b not available", "ollama pull gemma4:e4b"),
-        CheckResult("WARN", "ANTHROPIC_API_KEY not set", "export ANTHROPIC_API_KEY=sk-ant-..."),
+        CheckResult(
+            "WARN", "ANTHROPIC_API_KEY not set", "export ANTHROPIC_API_KEY=sk-ant-..."
+        ),
     ]
     text, code = format_report(results)
     assert code == 1
@@ -255,7 +258,9 @@ def test_format_report_multiple_fails():
     from pedalpoint.doctor import CheckResult, format_report
 
     results = [
-        CheckResult("FAIL", "pedalpoint-server not in PATH", "uv tool install pedalpoint"),
+        CheckResult(
+            "FAIL", "pedalpoint-server not in PATH", "uv tool install pedalpoint"
+        ),
         CheckResult("FAIL", "Ollama not reachable", "ollama serve"),
     ]
     text, code = format_report(results)
@@ -269,9 +274,9 @@ def test_format_report_fix_appears_indented_after_fail():
     results = [
         CheckResult("FAIL", "Model gemma4:e4b not available", "ollama pull gemma4:e4b"),
     ]
-    text, code = format_report(results)
+    text, _ = format_report(results)
     lines = text.splitlines()
-    fail_line_idx = next(i for i, l in enumerate(lines) if "FAIL" in l)
+    fail_line_idx = next(i for i, line in enumerate(lines) if "FAIL" in line)
     fix_line = lines[fail_line_idx + 1]
     assert "Fix:" in fix_line
     assert fix_line.startswith("      ")  # 6 spaces indent
@@ -281,11 +286,13 @@ def test_format_report_warn_fix_appears_indented():
     from pedalpoint.doctor import CheckResult, format_report
 
     results = [
-        CheckResult("WARN", "ANTHROPIC_API_KEY not set", "export ANTHROPIC_API_KEY=sk-ant-..."),
+        CheckResult(
+            "WARN", "ANTHROPIC_API_KEY not set", "export ANTHROPIC_API_KEY=sk-ant-..."
+        ),
     ]
-    text, code = format_report(results)
+    text, _ = format_report(results)
     lines = text.splitlines()
-    warn_line_idx = next(i for i, l in enumerate(lines) if "WARN" in l)
+    warn_line_idx = next(i for i, line in enumerate(lines) if "WARN" in line)
     fix_line = lines[warn_line_idx + 1]
     assert "Fix:" in fix_line
 
@@ -340,7 +347,7 @@ def test_run_all_returns_five_results():
 
 
 @respx.mock
-def test_run_all_uses_config_base_url(monkeypatch):
+def test_run_all_uses_config_base_url():
     """run_all passes cfg.base_url to the ollama checks."""
     from pedalpoint.doctor import run_all
 
@@ -411,8 +418,6 @@ def test_run_all_defaults_to_get_config(monkeypatch):
 @respx.mock
 def test_cli_doctor_subcommand_exits_0_on_all_pass(monkeypatch, tmp_path):
     """CLI doctor command exits 0 when all checks pass."""
-    import sys
-
     from pedalpoint.cli import main
     from pedalpoint.config import get_config
 
@@ -481,7 +486,7 @@ def test_cli_doctor_subcommand_exits_1_on_fail(monkeypatch, tmp_path):
     assert exc_info.value.code == 1
 
 
-def test_cli_no_subcommand_exits_0(capsys):
+def test_cli_no_subcommand_exits_0():
     """CLI with no subcommand prints help and exits 0."""
     from pedalpoint.cli import main
 
