@@ -139,9 +139,9 @@ async def test_500_forwards_status_and_body() -> None:
 
 
 @pytest.mark.asyncio
-async def test_claude_api_no_key_returns_error_string() -> None:
-    result = await _call_claude_api("write foo", "be terse", TEST_CFG)
-    assert result == "ERROR: ANTHROPIC_API_KEY not set — claude_api unavailable."
+async def test_claude_api_no_key_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY not set"):
+        await _call_claude_api("write foo", "be terse", TEST_CFG)
 
 
 @pytest.mark.asyncio
