@@ -6,6 +6,11 @@ from pedalpoint.error_classifier import classify_error
 @pytest.mark.parametrize(
     "text,expected",
     [
+        # auth_error — 401 and variants
+        ("401 Unauthorized", "auth_error"),
+        ("invalid api key", "auth_error"),
+        ("unauthorized", "auth_error"),
+        ("invalid_api_key provided", "auth_error"),
         # hard_quota — 402 and variants
         ("402 Payment Required", "hard_quota"),
         ("402 insufficient_quota", "hard_quota"),
@@ -46,3 +51,8 @@ def test_case_insensitive_rate_limit() -> None:
 def test_hard_quota_takes_priority_over_rate_limit() -> None:
     # If a message somehow contains both, hard_quota wins (checked first)
     assert classify_error("402 rate limit quota") == "hard_quota"
+
+
+def test_auth_error_takes_priority_over_hard_quota() -> None:
+    # 401 in message should not be consumed by hard_quota pattern
+    assert classify_error("401 quota exceeded") == "auth_error"

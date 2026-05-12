@@ -60,8 +60,34 @@ def transition_to_closed() -> CircuitState:
     return CLOSED_STATE.copy()
 
 
+def transition_to_api_fallback(
+    reason: str,
+    failure_count: int = 1,
+    initial_minutes: int = 60,
+    tasks_rerouted: int = 0,
+) -> CircuitState:
+    now = datetime.now(timezone.utc)
+    duration = compute_duration(failure_count, initial_minutes)
+    return {
+        "circuit": "api_fallback",
+        "reason": reason,
+        "opened_at": now.isoformat(),
+        "expires": (now + timedelta(minutes=duration)).isoformat(),
+        "failure_count": failure_count,
+        "fallback_duration_minutes": duration,
+        "tasks_rerouted": tasks_rerouted,
+    }
+
+
 def double_duration(state: CircuitState, initial_minutes: int = 60) -> CircuitState:
     failure_count = state.get("failure_count", 1) + 1
+    if state.get("circuit") == "api_fallback":
+        return transition_to_api_fallback(
+            reason=state.get("reason", "unknown"),
+            failure_count=failure_count,
+            initial_minutes=initial_minutes,
+            tasks_rerouted=state.get("tasks_rerouted", 0),
+        )
     return transition_to_open(
         reason=state.get("reason", "unknown"),
         failure_count=failure_count,

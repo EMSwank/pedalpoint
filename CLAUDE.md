@@ -55,7 +55,7 @@ pytest tests/unit/ --cov=pedalpoint --cov-fail-under=90
 | `src/pedalpoint/config.py` | Load env vars into frozen Config dataclass |
 | `src/pedalpoint/error_classifier.py` | Regex classify error strings → error type |
 | `src/pedalpoint/circuit_breaker.py` | Pure fns for state transitions, expiry, backoff |
-| `src/pedalpoint/server.py` | FastMCP app, lifespan, `local_llm` tool, `_call_local_llm` |
+| `src/pedalpoint/server.py` | FastMCP app, lifespan, `local_llm` tool, `_call_local_llm`, `claude_api` tool, `_call_claude_api` |
 | `skills/route-tasks/SKILL.md` | Claude instructions: routing, Context Courier, circuit breaker |
 | `install.sh` | Install pkg, pull model, register MCP config, copy skill |
 
@@ -76,9 +76,13 @@ pytest tests/unit/ --cov=pedalpoint --cov-fail-under=90
 
 CLOSED state: `{"circuit": "closed"}` or file absent.
 
+API_FALLBACK state: same schema as OPEN but `"circuit": "api_fallback"`. Judgment/structural tasks route to `claude_api`; mechanical tasks still use local_llm.
+
 ## Common Gotchas
 
 - `get_config()` uses `lru_cache`. Tests must call `get_config.cache_clear()` before and after monkeypatching env vars.
 - `_call_local_llm` is the testable core; `local_llm` (the MCP tool) just unwraps ctx and delegates to it.
 - 402 errors trigger permanent fallback. 429 errors trigger retry-with-backoff only. Do not conflate them.
 - The companion skill has no Python backing. Skill tests are manual scenarios in `tests/skill/scenarios/`.
+- `ANTHROPIC_API_KEY` is optional at startup. If absent, `claude_api` tool returns an error string (not an exception). Skill treats this string as a 402-equivalent and writes OPEN state.
+- `PEDALPOINT_API_MODEL` defaults to `"claude-sonnet-4-6"`. Update this env var when a newer Sonnet is released rather than editing code.
