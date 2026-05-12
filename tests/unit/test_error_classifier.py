@@ -18,6 +18,11 @@ from pedalpoint.error_classifier import classify_error
         ("billing hard limit reached", "hard_quota"),
         ("insufficient credits", "hard_quota"),
         ("You have exceeded your quota", "hard_quota"),
+        # hard_quota — Claude Code upgrade-prompt variants
+        ("Upgrade your plan to continue", "hard_quota"),
+        ("You've reached your plan limit", "hard_quota"),
+        ("You've reached your usage limit", "hard_quota"),
+        ("Your usage limit has been reached", "hard_quota"),
         # rate_limit — 429 and variants
         ("429 Too Many Requests", "rate_limit"),
         ("rate limit exceeded", "rate_limit"),
