@@ -27,6 +27,24 @@ class CheckResult:
     fix: str | None
 
 
+# ── private sentinel & fetch helper ─────────────────────────────────────────
+
+
+class _Unset:
+    """Sentinel meaning 'no pre-fetched response — go fetch it yourself'."""
+
+
+_UNSET = _Unset()
+
+
+def _fetch_models(cfg: Config) -> httpx.Response | None:
+    """GET /models once. Returns Response on success, None on connection failure."""
+    try:
+        return httpx.get(f"{cfg.base_url}/models", timeout=DOCTOR_TIMEOUT)
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError):
+        return None
+
+
 # ── individual checks ────────────────────────────────────────────────────────
 
 
@@ -42,50 +60,60 @@ def check_binary_in_path() -> CheckResult:
     )
 
 
-def check_ollama_reachable(cfg: Config) -> CheckResult:
-    """Check 2: Ollama is reachable at the configured base URL."""
-    url = f"{cfg.base_url}/models"
-    try:
-        response = httpx.get(url, timeout=DOCTOR_TIMEOUT)
-        if response.status_code == 200:
-            return CheckResult(
-                "PASS",
-                f"Ollama reachable at {cfg.base_url}",
-                None,
-            )
-        return CheckResult(
-            "FAIL",
-            f"Ollama returned HTTP {response.status_code} at {cfg.base_url}",
-            "ollama serve",
-        )
-    except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError):
+def check_ollama_reachable(
+    cfg: Config,
+    response: httpx.Response | None | _Unset = _UNSET,
+) -> CheckResult:
+    """Check 2: Ollama is reachable at the configured base URL.
+
+    Pass a pre-fetched response (or None for unreachable) to avoid a second
+    HTTP call when called from run_all.
+    """
+    if isinstance(response, _Unset):
+        response = _fetch_models(cfg)
+    if response is None:
         return CheckResult(
             "FAIL",
             f"Ollama not reachable at {cfg.base_url}",
             "ollama serve",
         )
+    if response.status_code == 200:
+        return CheckResult("PASS", f"Ollama reachable at {cfg.base_url}", None)
+    return CheckResult(
+        "FAIL",
+        f"Ollama returned HTTP {response.status_code} at {cfg.base_url}",
+        "ollama serve",
+    )
 
 
-def check_model_available(cfg: Config) -> CheckResult:
-    """Check 3: Required model is available in Ollama."""
-    url = f"{cfg.base_url}/models"
-    try:
-        response = httpx.get(url, timeout=DOCTOR_TIMEOUT)
-        if response.status_code == 200:
-            models = [m["id"] for m in response.json().get("data", [])]
-            if cfg.model in models:
-                return CheckResult(
-                    "PASS",
-                    f"Model {cfg.model} available",
-                    None,
-                )
-            return CheckResult(
-                "FAIL",
-                f"Model {cfg.model} not available",
-                f"ollama pull {cfg.model}",
-            )
-    except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError):
-        pass
+def check_model_available(
+    cfg: Config,
+    response: httpx.Response | None | _Unset = _UNSET,
+) -> CheckResult:
+    """Check 3: Required model is available in Ollama.
+
+    Pass a pre-fetched response (or None for unreachable) to avoid a second
+    HTTP call when called from run_all.  When response is None, Ollama is
+    unreachable — the fix is `ollama serve`, not `ollama pull`.
+    """
+    if isinstance(response, _Unset):
+        response = _fetch_models(cfg)
+    if response is None:
+        return CheckResult(
+            "FAIL",
+            f"Model {cfg.model} check skipped — Ollama unreachable at {cfg.base_url}",
+            "ollama serve",
+        )
+    if response.status_code != 200:
+        return CheckResult(
+            "FAIL",
+            f"Model {cfg.model} check skipped"
+            f" — Ollama returned HTTP {response.status_code}",
+            "ollama serve",
+        )
+    models = [m["id"] for m in response.json().get("data", [])]
+    if cfg.model in models:
+        return CheckResult("PASS", f"Model {cfg.model} available", None)
     return CheckResult(
         "FAIL",
         f"Model {cfg.model} not available",
@@ -115,13 +143,14 @@ def check_api_key(cfg: Config) -> CheckResult:
 
 
 def run_all(cfg: Config | None = None) -> list[CheckResult]:
-    """Run all checks in order and return results."""
+    """Run all checks in order. Fetches /models once for checks 2 and 3."""
     if cfg is None:
         cfg = get_config()
+    response = _fetch_models(cfg)
     return [
         check_binary_in_path(),
-        check_ollama_reachable(cfg),
-        check_model_available(cfg),
+        check_ollama_reachable(cfg, response),
+        check_model_available(cfg, response),
         check_pedalpoint_dir(),
         check_api_key(cfg),
     ]

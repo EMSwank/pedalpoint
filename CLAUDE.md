@@ -84,5 +84,5 @@ API_FALLBACK state: same schema as OPEN but `"circuit": "api_fallback"`. Judgmen
 - `_call_local_llm` is the testable core; `local_llm` (the MCP tool) just unwraps ctx and delegates to it.
 - 402 errors trigger permanent fallback. 429 errors trigger retry-with-backoff only. Do not conflate them.
 - The companion skill has no Python backing. Skill tests are manual scenarios in `tests/skill/scenarios/`.
-- `ANTHROPIC_API_KEY` is optional at startup. If absent, `claude_api` tool returns an error string (not an exception). Skill treats this string as a 402-equivalent and writes OPEN state.
+- `ANTHROPIC_API_KEY` is optional at startup. If absent, `_call_claude_api` raises `ValueError("ANTHROPIC_API_KEY not set...")`. FastMCP stringifies it; the skill's error dispatch table matches on that text and writes OPEN state.
 - `PEDALPOINT_API_MODEL` defaults to `"claude-sonnet-4-6"`. Update this env var when a newer Sonnet is released rather than editing code.

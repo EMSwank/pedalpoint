@@ -1,6 +1,5 @@
 """Unit tests for pedalpoint.doctor — run before implementing doctor.py."""
 
-from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -149,7 +148,28 @@ def test_model_check_fails_when_ollama_unreachable():
     result = check_model_available(BASE_CFG)
     assert result.status == "FAIL"
     assert result.fix is not None
-    assert "ollama pull gemma4:e4b" in result.fix
+    # When Ollama is unreachable, fix should be `ollama serve`, not `ollama pull`
+    assert "ollama serve" in result.fix
+
+
+def test_model_check_with_preloaded_none_response():
+    """When response=None (Ollama unreachable), fix is ollama serve not ollama pull."""
+    from pedalpoint.doctor import check_model_available
+
+    result = check_model_available(BASE_CFG, response=None)
+    assert result.status == "FAIL"
+    assert "ollama serve" in result.fix
+    assert "ollama pull" not in result.fix
+
+
+@respx.mock
+def test_model_check_with_preloaded_non_200_response():
+    """Non-200 response → fix is `ollama serve`, not `ollama pull`."""
+    from pedalpoint.doctor import check_model_available
+
+    result = check_model_available(BASE_CFG, response=httpx.Response(500, text="error"))
+    assert result.status == "FAIL"
+    assert "ollama serve" in result.fix
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +352,7 @@ def test_format_report_exact_output_structure():
 
 
 @respx.mock
-def test_run_all_returns_five_results():
+def test_run_all_returns_five_results(tmp_path):
     from pedalpoint.doctor import run_all
 
     respx.get("http://localhost:11434/v1/models").mock(
@@ -340,15 +360,14 @@ def test_run_all_returns_five_results():
     )
     with (
         patch("shutil.which", return_value="/usr/bin/pedalpoint"),
-        patch("pathlib.Path.home", return_value=Path("/tmp/fake_home_runall")),
+        patch("pathlib.Path.home", return_value=tmp_path),
     ):
-        Path("/tmp/fake_home_runall/.pedalpoint").mkdir(parents=True, exist_ok=True)
         results = run_all(BASE_CFG_WITH_KEY)
     assert len(results) == 5
 
 
 @respx.mock
-def test_run_all_uses_config_base_url():
+def test_run_all_uses_config_base_url(tmp_path):
     """run_all passes cfg.base_url to the ollama checks."""
     from pedalpoint.doctor import run_all
 
@@ -368,9 +387,8 @@ def test_run_all_uses_config_base_url():
     )
     with (
         patch("shutil.which", return_value="/usr/bin/pedalpoint"),
-        patch("pathlib.Path.home", return_value=Path("/tmp/fake_home_url")),
+        patch("pathlib.Path.home", return_value=tmp_path),
     ):
-        Path("/tmp/fake_home_url/.pedalpoint").mkdir(parents=True, exist_ok=True)
         results = run_all(cfg)
     # ollama check should PASS with custom URL
     assert results[1].status == "PASS"
@@ -382,7 +400,7 @@ def test_run_all_uses_config_base_url():
 
 
 @respx.mock
-def test_run_all_defaults_to_get_config(monkeypatch):
+def test_run_all_defaults_to_get_config(monkeypatch, tmp_path):
     """run_all(None) should call get_config() to obtain cfg."""
     from pedalpoint.doctor import run_all
 
@@ -403,10 +421,9 @@ def test_run_all_defaults_to_get_config(monkeypatch):
     )
     with (
         patch("shutil.which", return_value="/usr/bin/pedalpoint"),
-        patch("pathlib.Path.home", return_value=Path("/tmp/fake_home_none_cfg")),
+        patch("pathlib.Path.home", return_value=tmp_path),
     ):
-        Path("/tmp/fake_home_none_cfg/.pedalpoint").mkdir(parents=True, exist_ok=True)
-        results = run_all()  # no cfg argument — exercises line 119
+        results = run_all()  # no cfg argument — exercises get_config() path
     get_config.cache_clear()
     assert len(results) == 5
 
