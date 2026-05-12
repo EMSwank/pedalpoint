@@ -1,4 +1,5 @@
 """Unit tests for pedalpoint.doctor — run before implementing doctor.py."""
+
 from pathlib import Path
 from unittest.mock import patch
 

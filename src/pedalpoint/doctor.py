@@ -1,4 +1,5 @@
 """Health checks for pedalpoint — used by `pedalpoint doctor`."""
+
 from __future__ import annotations
 
 import shutil
@@ -149,8 +150,7 @@ def format_report(results: list[CheckResult]) -> tuple[str, int]:
         exit_code = 0
     elif fail_count == 1:
         lines.append(
-            "1 check failed. Run the fix commands above, then re-run:"
-            " pedalpoint doctor"
+            "1 check failed. Run the fix commands above, then re-run: pedalpoint doctor"
         )
         exit_code = 1
     else:
