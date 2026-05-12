@@ -7,8 +7,8 @@ import pytest
 import respx
 from mcp.server.fastmcp import Context
 
-from pedalpoint.config import Config
-from pedalpoint.server import _call_claude_api, _call_local_llm, local_llm
+from pedalpoint.config import Config, get_config
+from pedalpoint.server import _call_claude_api, _call_local_llm, lifespan, local_llm
 
 
 def test_local_llm_ctx_typed_as_context() -> None:
@@ -139,9 +139,9 @@ async def test_500_forwards_status_and_body() -> None:
 
 
 @pytest.mark.asyncio
-async def test_claude_api_no_key_returns_error_string() -> None:
-    result = await _call_claude_api("write foo", "be terse", TEST_CFG)
-    assert result == "ERROR: ANTHROPIC_API_KEY not set — claude_api unavailable."
+async def test_claude_api_no_key_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY not set"):
+        await _call_claude_api("write foo", "be terse", TEST_CFG)
 
 
 @pytest.mark.asyncio
@@ -244,3 +244,40 @@ async def test_local_llm_tool_delegates_to_call_local_llm() -> None:
         ctx = _make_ctx(TEST_CFG, http_client=http_client)
         result = await local_llm(ctx, "write foo", "be terse", "gemma4:e4b")
     assert result == "def foo(): pass"
+
+
+# ── lifespan ──────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_lifespan_yields_http_and_cfg_when_ollama_reachable(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    get_config.cache_clear()
+    respx.get("http://localhost:11434/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+    async with lifespan(None) as ctx:
+        assert "http" in ctx
+        assert "cfg" in ctx
+    get_config.cache_clear()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_lifespan_warns_but_still_yields_when_ollama_unreachable(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    get_config.cache_clear()
+    respx.get("http://localhost:11434/v1/models").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    with patch("pedalpoint.server.logger") as mock_logger:
+        async with lifespan(None) as ctx:
+            assert "http" in ctx
+            mock_logger.warning.assert_called_once()
+            assert "Ollama unreachable" in mock_logger.warning.call_args[0][0]
+    get_config.cache_clear()
