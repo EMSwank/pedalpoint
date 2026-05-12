@@ -22,6 +22,8 @@ TEST_CFG = Config(
     timeout=120.0,
     initial_fallback_minutes=60,
     context_limit=16000,
+    api_model="claude-sonnet-4-6",
+    api_key=None,
 )
 
 MOCK_RESPONSE = {"choices": [{"message": {"content": "def foo(): pass"}}]}

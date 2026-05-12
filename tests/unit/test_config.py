@@ -11,6 +11,8 @@ def test_defaults(monkeypatch):
         "PEDALPOINT_TIMEOUT",
         "PEDALPOINT_INITIAL_FALLBACK_MINUTES",
         "PEDALPOINT_CONTEXT_LIMIT",
+        "PEDALPOINT_API_MODEL",
+        "ANTHROPIC_API_KEY",
     ]:
         monkeypatch.delenv(key, raising=False)
     get_config.cache_clear()
@@ -21,6 +23,8 @@ def test_defaults(monkeypatch):
     assert cfg.timeout == 120.0
     assert cfg.initial_fallback_minutes == 60
     assert cfg.context_limit == 16000
+    assert cfg.api_model == "claude-sonnet-4-6"
+    assert cfg.api_key is None
     get_config.cache_clear()
 
 
@@ -64,4 +68,32 @@ def test_config_is_frozen():
     cfg = get_config()
     with pytest.raises((AttributeError, TypeError)):
         cfg.model = "other"  # type: ignore
+    get_config.cache_clear()
+
+
+def test_api_model_default(monkeypatch):
+    monkeypatch.delenv("PEDALPOINT_API_MODEL", raising=False)
+    get_config.cache_clear()
+    assert get_config().api_model == "claude-sonnet-4-6"
+    get_config.cache_clear()
+
+
+def test_api_model_custom(monkeypatch):
+    monkeypatch.setenv("PEDALPOINT_API_MODEL", "claude-opus-4-7")
+    get_config.cache_clear()
+    assert get_config().api_model == "claude-opus-4-7"
+    get_config.cache_clear()
+
+
+def test_api_key_absent(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    get_config.cache_clear()
+    assert get_config().api_key is None
+    get_config.cache_clear()
+
+
+def test_api_key_set(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    get_config.cache_clear()
+    assert get_config().api_key == "sk-ant-test"
     get_config.cache_clear()

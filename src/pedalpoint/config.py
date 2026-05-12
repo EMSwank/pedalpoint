@@ -11,6 +11,8 @@ class Config:
     timeout: float
     initial_fallback_minutes: int
     context_limit: int
+    api_model: str
+    api_key: str | None
 
 
 @lru_cache(maxsize=1)
@@ -24,4 +26,6 @@ def get_config() -> Config:
             os.getenv("PEDALPOINT_INITIAL_FALLBACK_MINUTES", "60")
         ),
         context_limit=int(os.getenv("PEDALPOINT_CONTEXT_LIMIT", "16000")),
+        api_model=os.getenv("PEDALPOINT_API_MODEL", "claude-sonnet-4-6"),
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
     )
