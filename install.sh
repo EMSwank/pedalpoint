@@ -115,12 +115,23 @@ case "$PKG_MGR" in
   pip)  pip install --user pedalpoint ;;
 esac
 
+# ── Step 3.5: Verify server binary is in PATH ────────────────────────────────
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v pedalpoint-server >/dev/null 2>&1; then
+  printf 'ERROR: pedalpoint-server not found in PATH after install.\n' >&2
+  printf '  Run: export PATH="$HOME/.local/bin:$PATH"\n' >&2
+  printf '  Then restart your shell and re-run this script.\n' >&2
+  exit 1
+fi
+printf '✓ pedalpoint-server in PATH: %s\n' "$(command -v pedalpoint-server)"
+
 # ── Step 4: Pull default model ───────────────────────────────────────────────
 if [ "$OLLAMA_AVAILABLE" = "1" ] && [ "$OLLAMA_CLI" = "1" ]; then
   printf '→ Pulling model %s...\n' "$PEDALPOINT_MODEL"
   if ! ollama pull "$PEDALPOINT_MODEL"; then
-    printf 'WARNING: Could not pull %s. Run manually: ollama pull %s\n' \
-      "$PEDALPOINT_MODEL" "$PEDALPOINT_MODEL"
+    printf 'ERROR: Could not pull %s.\n' "$PEDALPOINT_MODEL" >&2
+    printf '  Run: ollama pull %s\n' "$PEDALPOINT_MODEL" >&2
+    exit 1
   fi
 else
   printf 'WARNING: Skipping model pull. Run manually: ollama pull %s\n' "$PEDALPOINT_MODEL"
