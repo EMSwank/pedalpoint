@@ -41,7 +41,7 @@ Coverage requirements: circuit_breaker.py = 100%, error_classifier.py = 100%, se
 # Unit tests (fast, no Ollama needed)
 pytest tests/unit/ -v --cov=pedalpoint --cov-report=term-missing
 
-# Integration tests (requires Ollama running with gemma4:e4b pulled)
+# Integration tests (requires Ollama running with gemma4:12b pulled)
 PEDALPOINT_INTEGRATION=true pytest tests/integration/ -v
 
 # All unit tests with coverage check

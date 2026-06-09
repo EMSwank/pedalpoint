@@ -69,7 +69,7 @@ Should show `Status: ✓ Connected`. If disconnected, run `pedalpoint-server` di
 | Variable | Default | Description |
 |---|---|---|
 | `PEDALPOINT_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible endpoint |
-| `PEDALPOINT_MODEL` | `gemma4:e4b` | Default local model |
+| `PEDALPOINT_MODEL` | `gemma4:12b` | Default local model (12B dense, multimodal; needs ~16GB VRAM/unified memory). On smaller machines set `PEDALPOINT_MODEL=gemma4:e4b`. |
 | `PEDALPOINT_MODE` | `hybrid` | Routing mode |
 | `PEDALPOINT_TIMEOUT` | `120` | Read timeout in seconds |
 | `PEDALPOINT_INITIAL_FALLBACK_MINUTES` | `60` | Initial circuit-open duration (doubles on each probe failure) |
@@ -87,7 +87,7 @@ curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh 
 | Symptom | Fix |
 | :--- | :--- |
 | `local_llm` calls fail with "Ollama not reachable" | `ollama serve` (or open Ollama.app on macOS) |
-| `local_llm` fails with "Model gemma4:e4b not found" | `ollama pull gemma4:e4b` |
+| `local_llm` fails with "Model gemma4:12b not found" | `ollama pull gemma4:12b` |
 | `/route-tasks` says `local_llm` tool not available | `claude mcp get pedalpoint` (check status; if missing, re-run install) |
 | `claude_api` returns "ANTHROPIC_API_KEY not set" — api_fallback tier disabled | `export ANTHROPIC_API_KEY=sk-ant-...` then restart Claude Code |
 | All tasks route to local LLM even after Claude quota resets | `echo '{"circuit":"closed"}' > ~/.pedalpoint/state.json` |

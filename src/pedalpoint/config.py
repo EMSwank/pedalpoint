@@ -19,7 +19,7 @@ class Config:
 def get_config() -> Config:
     return Config(
         base_url=os.getenv("PEDALPOINT_BASE_URL", "http://localhost:11434/v1"),
-        model=os.getenv("PEDALPOINT_MODEL", "gemma4:e4b"),
+        model=os.getenv("PEDALPOINT_MODEL", "gemma4:12b"),
         mode=os.getenv("PEDALPOINT_MODE", "hybrid"),
         timeout=float(os.getenv("PEDALPOINT_TIMEOUT", "120")),
         initial_fallback_minutes=int(

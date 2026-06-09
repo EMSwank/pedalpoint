@@ -14,7 +14,7 @@ from pedalpoint.config import Config, get_config
 
 BASE_CFG = Config(
     base_url="http://localhost:11434/v1",
-    model="gemma4:e4b",
+    model="gemma4:12b",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -25,7 +25,7 @@ BASE_CFG = Config(
 
 BASE_CFG_WITH_KEY = Config(
     base_url="http://localhost:11434/v1",
-    model="gemma4:e4b",
+    model="gemma4:12b",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -34,7 +34,7 @@ BASE_CFG_WITH_KEY = Config(
     api_key="sk-ant-test",
 )
 
-MODELS_RESPONSE = {"data": [{"id": "gemma4:e4b"}, {"id": "llama3"}]}
+MODELS_RESPONSE = {"data": [{"id": "gemma4:12b"}, {"id": "llama3"}]}
 MODELS_RESPONSE_MISSING = {"data": [{"id": "llama3"}]}
 
 
@@ -121,7 +121,7 @@ def test_model_check_passes_when_in_list():
     )
     result = check_model_available(BASE_CFG)
     assert result.status == "PASS"
-    assert "gemma4:e4b" in result.message
+    assert "gemma4:12b" in result.message
     assert result.fix is None
 
 
@@ -135,7 +135,7 @@ def test_model_check_fails_when_not_in_list():
     result = check_model_available(BASE_CFG)
     assert result.status == "FAIL"
     assert result.fix is not None
-    assert "ollama pull gemma4:e4b" in result.fix
+    assert "ollama pull gemma4:12b" in result.fix
 
 
 @respx.mock
@@ -234,7 +234,7 @@ def test_format_report_all_pass_returns_exit_0():
     results = [
         CheckResult("PASS", "pedalpoint-server in PATH", None),
         CheckResult("PASS", "Ollama reachable at http://localhost:11434/v1", None),
-        CheckResult("PASS", "Model gemma4:e4b available", None),
+        CheckResult("PASS", "Model gemma4:12b available", None),
         CheckResult("PASS", "~/.pedalpoint/ exists", None),
         CheckResult("PASS", "ANTHROPIC_API_KEY set", None),
     ]
@@ -263,7 +263,7 @@ def test_format_report_with_fail_returns_exit_1():
 
     results = [
         CheckResult("PASS", "pedalpoint-server in PATH", None),
-        CheckResult("FAIL", "Model gemma4:e4b not available", "ollama pull gemma4:e4b"),
+        CheckResult("FAIL", "Model gemma4:12b not available", "ollama pull gemma4:12b"),
         CheckResult(
             "WARN", "ANTHROPIC_API_KEY not set", "export ANTHROPIC_API_KEY=sk-ant-..."
         ),
@@ -272,7 +272,7 @@ def test_format_report_with_fail_returns_exit_1():
     assert code == 1
     assert "1 check failed" in text
     assert "FAIL" in text
-    assert "Fix: ollama pull gemma4:e4b" in text
+    assert "Fix: ollama pull gemma4:12b" in text
 
 
 def test_format_report_multiple_fails():
@@ -293,7 +293,7 @@ def test_format_report_fix_appears_indented_after_fail():
     from pedalpoint.doctor import CheckResult, format_report
 
     results = [
-        CheckResult("FAIL", "Model gemma4:e4b not available", "ollama pull gemma4:e4b"),
+        CheckResult("FAIL", "Model gemma4:12b not available", "ollama pull gemma4:12b"),
     ]
     text, _ = format_report(results)
     lines = text.splitlines()
@@ -325,7 +325,7 @@ def test_format_report_exact_output_structure():
     results = [
         CheckResult("PASS", "pedalpoint-server in PATH", None),
         CheckResult("PASS", "Ollama reachable at http://localhost:11434/v1", None),
-        CheckResult("FAIL", "Model gemma4:e4b not available", "ollama pull gemma4:e4b"),
+        CheckResult("FAIL", "Model gemma4:12b not available", "ollama pull gemma4:12b"),
         CheckResult("PASS", "~/.pedalpoint/ exists", None),
         CheckResult(
             "WARN",
@@ -337,8 +337,8 @@ def test_format_report_exact_output_structure():
     assert code == 1
     assert "PASS  pedalpoint-server in PATH" in text
     assert "PASS  Ollama reachable at http://localhost:11434/v1" in text
-    assert "FAIL  Model gemma4:e4b not available" in text
-    assert "      Fix: ollama pull gemma4:e4b" in text
+    assert "FAIL  Model gemma4:12b not available" in text
+    assert "      Fix: ollama pull gemma4:12b" in text
     assert "PASS  ~/.pedalpoint/ exists" in text
     assert "WARN  ANTHROPIC_API_KEY not set (api_fallback tier disabled)" in text
     assert "      Fix: export ANTHROPIC_API_KEY=sk-ant-..." in text
@@ -374,7 +374,7 @@ def test_run_all_uses_config_base_url(tmp_path):
     custom_url = "http://localhost:9999/v1"
     cfg = Config(
         base_url=custom_url,
-        model="gemma4:e4b",
+        model="gemma4:12b",
         mode="hybrid",
         timeout=120.0,
         initial_fallback_minutes=60,
