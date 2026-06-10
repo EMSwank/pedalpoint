@@ -18,7 +18,7 @@ def test_local_llm_ctx_typed_as_context() -> None:
 
 TEST_CFG = Config(
     base_url="http://localhost:11434/v1",
-    model="gemma4:e4b",
+    model="gemma4:12b",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -29,7 +29,7 @@ TEST_CFG = Config(
 
 TEST_CFG_WITH_KEY = Config(
     base_url="http://localhost:11434/v1",
-    model="gemma4:e4b",
+    model="gemma4:12b",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -49,7 +49,7 @@ async def test_basic_prompt_returns_content() -> None:
     )
     async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
         result = await _call_local_llm(
-            client, "write foo", None, "gemma4:e4b", TEST_CFG
+            client, "write foo", None, "gemma4:12b", TEST_CFG
         )
     assert result == "def foo(): pass"
 
@@ -61,7 +61,7 @@ async def test_system_prompt_included_in_messages() -> None:
         return_value=httpx.Response(200, json=MOCK_RESPONSE)
     )
     async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
-        await _call_local_llm(client, "write foo", "be terse", "gemma4:e4b", TEST_CFG)
+        await _call_local_llm(client, "write foo", "be terse", "gemma4:12b", TEST_CFG)
     payload = json.loads(route.calls[0].request.content)
     messages = payload["messages"]
     assert messages[0]["role"] == "system"
@@ -76,7 +76,7 @@ async def test_no_system_prompt_omits_system_message() -> None:
         return_value=httpx.Response(200, json=MOCK_RESPONSE)
     )
     async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
-        await _call_local_llm(client, "write foo", None, "gemma4:e4b", TEST_CFG)
+        await _call_local_llm(client, "write foo", None, "gemma4:12b", TEST_CFG)
     payload = json.loads(route.calls[0].request.content)
     roles = [m["role"] for m in payload["messages"]]
     assert "system" not in roles
@@ -102,7 +102,7 @@ async def test_connect_error_raises_clear_message() -> None:
     )
     async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
         with pytest.raises(ValueError, match="Ollama not reachable"):
-            await _call_local_llm(client, "prompt", None, "gemma4:e4b", TEST_CFG)
+            await _call_local_llm(client, "prompt", None, "gemma4:12b", TEST_CFG)
 
 
 @respx.mock
@@ -113,7 +113,7 @@ async def test_timeout_raises_clear_message() -> None:
     )
     async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
         with pytest.raises(ValueError, match="timed out after"):
-            await _call_local_llm(client, "prompt", None, "gemma4:e4b", TEST_CFG)
+            await _call_local_llm(client, "prompt", None, "gemma4:12b", TEST_CFG)
 
 
 @respx.mock
@@ -124,7 +124,7 @@ async def test_404_raises_model_not_found_message() -> None:
     )
     async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
         with pytest.raises(ValueError, match="ollama pull"):
-            await _call_local_llm(client, "prompt", None, "gemma4:e4b", TEST_CFG)
+            await _call_local_llm(client, "prompt", None, "gemma4:12b", TEST_CFG)
 
 
 @respx.mock
@@ -135,7 +135,7 @@ async def test_500_forwards_status_and_body() -> None:
     )
     async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
         with pytest.raises(ValueError, match="HTTP 500"):
-            await _call_local_llm(client, "prompt", None, "gemma4:e4b", TEST_CFG)
+            await _call_local_llm(client, "prompt", None, "gemma4:12b", TEST_CFG)
 
 
 @pytest.mark.asyncio
@@ -242,7 +242,7 @@ async def test_local_llm_tool_delegates_to_call_local_llm() -> None:
     )
     async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as http_client:
         ctx = _make_ctx(TEST_CFG, http_client=http_client)
-        result = await local_llm(ctx, "write foo", "be terse", "gemma4:e4b")
+        result = await local_llm(ctx, "write foo", "be terse", "gemma4:12b")
     assert result == "def foo(): pass"
 
 

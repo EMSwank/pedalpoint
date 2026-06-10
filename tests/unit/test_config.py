@@ -18,7 +18,7 @@ def test_defaults(monkeypatch):
     get_config.cache_clear()
     cfg = get_config()
     assert cfg.base_url == "http://localhost:11434/v1"
-    assert cfg.model == "gemma4:e4b"
+    assert cfg.model == "gemma4:12b"
     assert cfg.mode == "hybrid"
     assert cfg.timeout == 120.0
     assert cfg.initial_fallback_minutes == 60

@@ -52,6 +52,9 @@ jobs:
         run: |
           ollama serve &
           timeout 30 bash -c 'until ollama list 2>/dev/null; do sleep 1; done'
+          # Pin small model in CI — GitHub runners are GPU-less (~16GB shared RAM);
+          # the default gemma4:12b would OOM/timeout. Tests use cfg.model via the
+          # PEDALPOINT_MODEL override below, so this exercises the same code path.
           ollama pull gemma4:e4b
 
       - name: Install dependencies
@@ -60,7 +63,7 @@ jobs:
       - name: Run integration tests
         env:
           PEDALPOINT_INTEGRATION: "true"
-          PEDALPOINT_MODEL: "gemma4:e4b"
+          PEDALPOINT_MODEL: "gemma4:e4b" # CI override — see pull step above
         run: pytest tests/integration/ -v
 
   install-tests:
