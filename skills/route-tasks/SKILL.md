@@ -207,15 +207,20 @@ Monitor the Agent spawn result. On error, proceed to Step 4b.
 
 ### Step 4b: Error Handling
 
-**Draft errors (`local_llm` / `claude_api`) — not circuit events; never change state.json:**
+**Draft errors (`local_llm` / `claude_api`) — check this table FIRST. None of these are circuit events; never change state.json for them:**
 
 | Error text contains | Action |
 |---|---|
-| `outside the project repo`, `Not in a git repository` | Do the task yourself directly. |
+| `outside the project repo`, `Not in a git repository`, `must be a file` | Do the task yourself directly. |
 | `too large for local regeneration`, `Context too large` | Do the task yourself directly. |
-| `Model returned empty output` | Retry `local_llm` once. Still empty: do the task yourself. |
-| `not reachable`, `timed out` | Print `⚠ local LLM unreachable — falling back to Claude`. Do the task yourself (or open-circuit: stop and tell the user to start the model server). |
+| `Cannot read`, `Bad line range` | Fix the `context_paths` / `target_path` and retry once. Still failing: do the task yourself. |
+| `Model returned empty output` | Retry once. Still empty: do the task yourself. |
+| `Model output truncated` | Split the task into smaller files, or do it yourself. |
+| `not reachable`, `timed out` (from `local_llm`) | Print `⚠ local LLM unreachable — falling back to Claude`. Do the task yourself. |
 | `not found — run:` | Print the error (it contains the download command). Do the task yourself. |
+| **any other `local_llm` error**, or a `claude_api` error that does not start with `HTTP `, `Anthropic API`, or `ANTHROPIC_API_KEY` | Do the task yourself directly. Never treat it as quota. |
+
+In the **open-circuit path**, "do the task yourself" is not possible: skip the task, log it to `fallback-log.md` with the error text, and continue with the next task.
 
 **Agent spawn errors (judgment path):**
 
@@ -226,7 +231,7 @@ Monitor the Agent spawn result. On error, proceed to Step 4b.
 | `529`, `overload`, `capacity` | Route this task only to the local path. Circuit stays CLOSED for next task. |
 | **(any other / unrecognized error)** | Treat as hard quota. Write `api_fallback` state if circuit is `closed`; write OPEN state if circuit is `api_fallback`. Re-route this task to `claude_api` or the open-circuit path accordingly. Log `⚠ HIGH PRIORITY` entry with full error text. |
 
-**`claude_api` errors (circuit is `api_fallback`):**
+**`claude_api` API errors (circuit is `api_fallback`; only errors starting with `HTTP `, `Anthropic API`, or `ANTHROPIC_API_KEY`):**
 
 | Error pattern | Action |
 |---|---|

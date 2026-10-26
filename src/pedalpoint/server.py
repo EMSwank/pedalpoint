@@ -106,9 +106,17 @@ def _server_version() -> str:
         return "unknown"
 
 
+def _read_text(path: Path, shown: str) -> str:
+    """Read a repo file; file problems become a ValueError the skill recognizes."""
+    try:
+        return path.read_text()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"Cannot read {shown!r}: {exc}") from None
+
+
 def _read_context(spec: str, root: Path) -> tuple[str, str]:
     raw, first, last = paths.parse_context_spec(spec)
-    text = paths.resolve_in_repo(raw, root).read_text()
+    text = _read_text(paths.resolve_in_repo(raw, root), raw)
     if first is None:
         return raw, text
     lines = text.splitlines()[first - 1 : last]
@@ -147,7 +155,7 @@ async def _create_draft(
             f"Target {target_path!r} must be a file inside the project repo"
         )
     context = [_read_context(spec, repo_root) for spec in context_paths]
-    existing = target.read_text() if target.exists() else None
+    existing = _read_text(target, target_path) if target.exists() else None
     if existing is not None:
         n = len(existing.splitlines())
         if n > drafting.MAX_EDIT_LINES:

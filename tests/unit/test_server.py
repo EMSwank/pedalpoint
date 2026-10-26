@@ -672,3 +672,16 @@ async def test_create_draft_fenced_python_with_syntax_error_still_written(
 ) -> None:
     await _draft(repo, "```python\ndef f(:\n    pass\n```")
     assert (repo / "src" / "new.py.draft").read_text() == "def f(:\n    pass\n"
+
+
+@pytest.mark.asyncio
+async def test_create_draft_missing_context_file_is_clear_error(repo: Path) -> None:
+    with pytest.raises(ValueError, match=r"^Cannot read 'src/nope.py'"):
+        await _draft(repo, "x = 1\n", context_paths=["src/nope.py:1-5"])
+
+
+@pytest.mark.asyncio
+async def test_create_draft_binary_target_is_clear_error(repo: Path) -> None:
+    (repo / "src" / "blob.py").write_bytes(b"\xff\xfe\x00bad")
+    with pytest.raises(ValueError, match=r"^Cannot read 'src/blob.py'"):
+        await _draft(repo, "x = 1\n", target_path="src/blob.py")
