@@ -123,6 +123,10 @@ async def _create_draft(
     if repo_root is None:
         raise ValueError("Not in a git repository — local_llm needs a project repo")
     target = paths.resolve_in_repo(target_path, repo_root)
+    if target == repo_root.resolve() or target.is_dir():
+        raise ValueError(
+            f"Target {target_path!r} must be a file inside the project repo"
+        )
     context = [_read_context(spec, repo_root) for spec in context_paths]
     existing = target.read_text() if target.exists() else None
     if existing is not None:
@@ -150,7 +154,7 @@ async def _create_draft(
 
     draft = paths.draft_path_for(target)
     draft.parent.mkdir(parents=True, exist_ok=True)
-    draft.write_text(code)
+    paths.write_draft(draft, code)
     lines_changed, changed_tokens = drafting.change_size(existing, code)
 
     result = {

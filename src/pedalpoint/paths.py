@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -42,3 +43,12 @@ def parse_context_spec(spec: str) -> tuple[str, int | None, int | None]:
 
 def draft_path_for(target: Path) -> Path:
     return target.with_name(target.name + ".draft")
+
+
+def write_draft(draft: Path, text: str) -> None:
+    """Write a fresh regular file; never follow a symlink or hard link at `draft`."""
+    if draft.is_symlink() or draft.exists():
+        draft.unlink()
+    fd = os.open(draft, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)

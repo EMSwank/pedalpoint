@@ -85,3 +85,24 @@ def test_parse_context_spec_bad_range_raises(spec: str) -> None:
 
 def test_draft_path_for() -> None:
     assert draft_path_for(Path("a/b.py")) == Path("a/b.py.draft")
+
+
+def test_write_draft_replaces_symlink_without_following(tmp_path: Path) -> None:
+    from pedalpoint.paths import write_draft
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("keep\n")
+    draft = tmp_path / "a.py.draft"
+    draft.symlink_to(outside)
+    write_draft(draft, "new\n")
+    assert outside.read_text() == "keep\n"
+    assert not draft.is_symlink() and draft.read_text() == "new\n"
+
+
+def test_write_draft_overwrites_regular_file(tmp_path: Path) -> None:
+    from pedalpoint.paths import write_draft
+
+    draft = tmp_path / "a.py.draft"
+    draft.write_text("old\n")
+    write_draft(draft, "new\n")
+    assert draft.read_text() == "new\n"

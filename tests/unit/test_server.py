@@ -601,3 +601,28 @@ async def test_local_llm_status_unreachable() -> None:
         status = json.loads(await local_llm_status(ctx))
     assert status["reachable"] is False
     assert status["repo_root"] is None
+
+
+# ── final-review fixes ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_draft_symlinked_draft_does_not_write_through(
+    repo: Path, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("ORIGINAL\n")
+    (repo / "src" / "util.py.draft").symlink_to(outside)
+    await _draft(repo, "PWNED = 1\n", target_path="src/util.py")
+    assert outside.read_text() == "ORIGINAL\n"
+    draft = repo / "src" / "util.py.draft"
+    assert not draft.is_symlink()
+    assert draft.read_text() == "PWNED = 1\n"
+
+
+@pytest.mark.parametrize("target", [".", "", "src"])
+@pytest.mark.asyncio
+async def test_create_draft_rejects_directory_target(repo: Path, target: str) -> None:
+    with pytest.raises(ValueError, match="must be a file"):
+        await _draft(repo, "x = 1\n", target_path=target)
+    assert not (repo.parent / "repo.draft").exists()
