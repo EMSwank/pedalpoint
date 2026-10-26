@@ -1,14 +1,16 @@
 #!/usr/bin/env sh
 set -e
 
-# Defaults
-PEDALPOINT_MODEL="${PEDALPOINT_MODEL:-gemma4:12b}"
-PEDALPOINT_BASE_URL="${PEDALPOINT_BASE_URL:-http://localhost:11434/v1}"
+# Defaults (model/base URL depend on the backend; resolved after parsing)
+PEDALPOINT_BACKEND="${PEDALPOINT_BACKEND:-}"
+PEDALPOINT_MODEL="${PEDALPOINT_MODEL:-}"
+PEDALPOINT_BASE_URL="${PEDALPOINT_BASE_URL:-}"
 UNINSTALL=0
 
 # Parse arguments
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --backend)    PEDALPOINT_BACKEND="$2";  shift 2 ;;
     --model)      PEDALPOINT_MODEL="$2";    shift 2 ;;
     --base-url)   PEDALPOINT_BASE_URL="$2"; shift 2 ;;
     --uninstall)  UNINSTALL=1;              shift   ;;
@@ -16,9 +18,44 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-SKILL_DIR="${HOME}/.claude/skills/route-tasks"
 STATE_DIR="${HOME}/.pedalpoint"
-PEDALPOINT_RAW="https://raw.githubusercontent.com/EMSwank/pedalpoint/main"
+
+# Backend: --backend > saved choice > existing registration > platform default
+if [ -z "$PEDALPOINT_BACKEND" ] && [ -f "${STATE_DIR}/backend" ]; then
+  PEDALPOINT_BACKEND=$(cat "${STATE_DIR}/backend")
+fi
+if [ -z "$PEDALPOINT_BACKEND" ] && command -v claude >/dev/null 2>&1; then
+  _registered=$(claude mcp get pedalpoint 2>/dev/null || true)
+  case "$_registered" in
+    *PEDALPOINT_BACKEND=mlx*)    PEDALPOINT_BACKEND="mlx" ;;
+    *PEDALPOINT_BACKEND=ollama*) PEDALPOINT_BACKEND="ollama" ;;
+    *:11434*)                    PEDALPOINT_BACKEND="ollama" ;;  # pre-0.4 install
+  esac
+fi
+if [ -z "$PEDALPOINT_BACKEND" ]; then
+  if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+    PEDALPOINT_BACKEND="mlx"
+  else
+    PEDALPOINT_BACKEND="ollama"
+  fi
+fi
+case "$PEDALPOINT_BACKEND" in
+  mlx)
+    PEDALPOINT_MODEL="${PEDALPOINT_MODEL:-mlx-community/gemma-4-e4b-it-4bit}"
+    PEDALPOINT_BASE_URL="${PEDALPOINT_BASE_URL:-http://localhost:8080/v1}"
+    ;;
+  ollama)
+    PEDALPOINT_MODEL="${PEDALPOINT_MODEL:-gemma4:12b}"
+    PEDALPOINT_BASE_URL="${PEDALPOINT_BASE_URL:-http://localhost:11434/v1}"
+    ;;
+  *)
+    printf 'Unknown backend: %s (use mlx or ollama)\n' "$PEDALPOINT_BACKEND" >&2
+    exit 1
+    ;;
+esac
+
+SKILL_DIR="${HOME}/.claude/skills/route-tasks"
+PEDALPOINT_REPO_RAW="https://raw.githubusercontent.com/EMSwank/pedalpoint"
 
 # ── Uninstall ────────────────────────────────────────────────────────────────
 if [ "$UNINSTALL" = "1" ]; then
@@ -81,21 +118,23 @@ if ! command -v curl >/dev/null 2>&1 && ! command -v git >/dev/null 2>&1; then
   printf 'ERROR: curl or git required.\n' >&2; exit 1
 fi
 
-# Ollama reachable (warn only)
 OLLAMA_AVAILABLE=0
-if curl -sf "${PEDALPOINT_BASE_URL}/models" >/dev/null 2>&1; then
-  OLLAMA_AVAILABLE=1
-else
-  printf 'WARNING: Ollama not reachable at %s\n' "$PEDALPOINT_BASE_URL"
-  printf '         Install Ollama or update PEDALPOINT_BASE_URL.\n'
-fi
-
-# ollama CLI (warn only)
 OLLAMA_CLI=0
-if command -v ollama >/dev/null 2>&1; then
-  OLLAMA_CLI=1
-else
-  printf 'WARNING: ollama CLI not found — model pull will be skipped.\n'
+if [ "$PEDALPOINT_BACKEND" = "ollama" ]; then
+  # Ollama reachable (warn only)
+  if curl -sf "${PEDALPOINT_BASE_URL}/models" >/dev/null 2>&1; then
+    OLLAMA_AVAILABLE=1
+  else
+    printf 'WARNING: Ollama not reachable at %s\n' "$PEDALPOINT_BASE_URL"
+    printf '         Install Ollama or update PEDALPOINT_BASE_URL.\n'
+  fi
+
+  # ollama CLI (warn only)
+  if command -v ollama >/dev/null 2>&1; then
+    OLLAMA_CLI=1
+  else
+    printf 'WARNING: ollama CLI not found — model pull will be skipped.\n'
+  fi
 fi
 
 # ── Step 2: Detect package manager ──────────────────────────────────────────
@@ -110,9 +149,9 @@ fi
 # ── Step 3: Install Python package ──────────────────────────────────────────
 printf '→ Installing pedalpoint via %s...\n' "$PKG_MGR"
 case "$PKG_MGR" in
-  uv)   uv tool install pedalpoint ;;
+  uv)   uv tool install --upgrade pedalpoint ;;
   pipx) pipx install pedalpoint 2>/dev/null || pipx upgrade pedalpoint ;;
-  pip)  pip install --user pedalpoint ;;
+  pip)  pip install --user --upgrade pedalpoint ;;
 esac
 
 # ── Step 3.5: Verify server binary is in PATH ────────────────────────────────
@@ -125,8 +164,24 @@ if ! command -v pedalpoint-server >/dev/null 2>&1; then
 fi
 printf '✓ pedalpoint-server in PATH: %s\n' "$(command -v pedalpoint-server)"
 
-# ── Step 4: Pull default model ───────────────────────────────────────────────
-if [ "$OLLAMA_AVAILABLE" = "1" ] && [ "$OLLAMA_CLI" = "1" ]; then
+# ── Step 4: Get the model ────────────────────────────────────────────────────
+if [ "$PEDALPOINT_BACKEND" = "mlx" ]; then
+  printf '→ Installing mlx-lm...\n'
+  if command -v uv >/dev/null 2>&1; then
+    uv tool install mlx-lm || printf 'WARNING: uv tool install mlx-lm failed.\n'
+  elif command -v pipx >/dev/null 2>&1; then
+    pipx install mlx-lm 2>/dev/null || pipx upgrade mlx-lm || \
+      printf 'WARNING: pipx install mlx-lm failed.\n'
+  else
+    printf 'WARNING: uv/pipx not found — install mlx-lm manually: pip install mlx-lm\n'
+  fi
+
+  printf '→ Downloading model %s...\n' "$PEDALPOINT_MODEL"
+  if ! uvx --from huggingface_hub hf download "$PEDALPOINT_MODEL"; then
+    printf 'WARNING: Could not download %s.\n' "$PEDALPOINT_MODEL"
+    printf '  Run: uvx --from huggingface_hub hf download %s\n' "$PEDALPOINT_MODEL"
+  fi
+elif [ "$OLLAMA_AVAILABLE" = "1" ] && [ "$OLLAMA_CLI" = "1" ]; then
   printf '→ Pulling model %s...\n' "$PEDALPOINT_MODEL"
   if ! ollama pull "$PEDALPOINT_MODEL"; then
     printf 'ERROR: Could not pull %s.\n' "$PEDALPOINT_MODEL" >&2
@@ -137,10 +192,17 @@ else
   printf 'WARNING: Skipping model pull. Run manually: ollama pull %s\n' "$PEDALPOINT_MODEL"
 fi
 
-# ── Step 6: Install companion skill ─────────────────────────────────────────
+# ── Step 6: Install companion skill (pinned to the installed release) ───────
 printf '→ Installing companion skill...\n'
+PEDALPOINT_VERSION=$(pedalpoint --version 2>/dev/null | awk '{print $2}') || true
+if [ -n "$PEDALPOINT_VERSION" ]; then
+  SKILL_REF="v${PEDALPOINT_VERSION}"
+else
+  SKILL_REF="main"
+  printf 'WARNING: could not determine pedalpoint version — using skill from main.\n'
+fi
 mkdir -p "${SKILL_DIR}"
-curl -fsSL "${PEDALPOINT_RAW}/skills/route-tasks/SKILL.md" \
+curl -fsSL "${PEDALPOINT_REPO_RAW}/${SKILL_REF}/skills/route-tasks/SKILL.md" \
   -o "${SKILL_DIR}/SKILL.md"
 
 # ── Step 7: Register MCP server ─────────────────────────────────────────────
@@ -153,13 +215,15 @@ fi
 
 claude mcp remove pedalpoint -s user 2>/dev/null || true
 claude mcp add pedalpoint pedalpoint-server --scope user \
+  -e "PEDALPOINT_BACKEND=${PEDALPOINT_BACKEND}" \
   -e "PEDALPOINT_BASE_URL=${PEDALPOINT_BASE_URL}" \
   -e "PEDALPOINT_MODEL=${PEDALPOINT_MODEL}" \
   -e "PEDALPOINT_MODE=hybrid" \
   -e "PEDALPOINT_TIMEOUT=120"
 
-# ── Step 8: Create state directory ──────────────────────────────────────────
+# ── Step 8: Create state directory, remember backend ────────────────────────
 mkdir -p "$STATE_DIR"
+printf '%s\n' "$PEDALPOINT_BACKEND" > "${STATE_DIR}/backend"
 
 # ── Step 9: Summary ──────────────────────────────────────────────────────────
 printf '\n'
@@ -167,6 +231,10 @@ printf '✓ pedalpoint installed!\n'
 printf '✓ MCP server:  pedalpoint-server (user scope)\n'
 printf '✓ Skill:       /route-tasks\n'
 printf '✓ State dir:   %s\n' "$STATE_DIR"
+printf '✓ Backend:     %s (%s)\n' "$PEDALPOINT_BACKEND" "$PEDALPOINT_MODEL"
 printf '\n'
+if [ "$PEDALPOINT_BACKEND" = "mlx" ]; then
+  printf '→ Start the model server: mlx_lm.server --model %s\n' "$PEDALPOINT_MODEL"
+fi
 printf '→ Restart Claude Code to activate.\n'
 printf '→ Then invoke: /route-tasks\n'

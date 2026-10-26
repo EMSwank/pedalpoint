@@ -1,4 +1,4 @@
-# Scenario: Structural Path — Agent Rejects Draft (Judgment Task in Disguise)
+# Scenario: Structural Path — Judgment Task in Disguise (score 1)
 
 ## Setup
 - Project has existing route files
@@ -11,16 +11,13 @@
 ## Expected Behavior
 1. Classified initially as structural (FastAPI route — framework-known)
 2. Courier greps for route patterns, finds existing routes
-3. local_llm returns basic route code
-4. Code written to `src/api/auth.py.draft`
-5. Agent review spawned
-6. Agent outputs REJECT: "This task involves OAuth2 token exchange and credential handling — security-sensitive logic requiring judgment routing."
-7. Skill deletes `src/api/auth.py.draft`
-8. Task re-classified as judgment
-9. Agent spawned with full task description and security context
+3. `local_llm` writes `src/api/auth.py.draft` with basic route code
+4. Claude Reads the draft and recognizes OAuth2 token exchange / credential handling — security-sensitive, needs judgment
+5. `rm src/api/auth.py.draft`
+6. `record_outcome(handoff_id, 1, "security-sensitive: judgment task")`
+7. Task re-classified as judgment; judgment path runs
 
 ## Verification
-- Agent review output was REJECT with reason
-- .draft file was deleted (not renamed)
+- `.draft` deleted (not renamed)
+- `record_outcome` score is 1
 - Task escalated to judgment path
-- Final Agent handles the auth implementation

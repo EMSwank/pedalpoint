@@ -7,21 +7,33 @@ description: Execute implementation plan tasks with automatic routing between lo
 
 You are executing an implementation plan. For each task, follow these steps exactly.
 
+**The point of local handoffs is to save Claude output tokens.** The pedalpoint server writes the local model's code straight to a `.draft` file — you never re-type it. You only read the draft, fix what's wrong, and promote it with `mv`. Never paste code into a `task` argument; pass file paths instead.
+
 ## Prerequisites Check
 
-Verify the `local_llm` MCP tool is available. If it is not listed in your available tools:
-> ⚠ pedalpoint MCP server not connected. Run `pedalpoint-server` in a terminal to diagnose. Falling back to Agent for all tasks.
+Verify the `local_llm` and `local_llm_status` MCP tools are available.
+- **Neither is listed:**
+  > ⚠ pedalpoint MCP server not connected. Run `pedalpoint doctor` in a terminal to diagnose. Falling back to Agent for all tasks.
+- **`local_llm` is listed but `local_llm_status` is not** (a pre-0.4 server):
+  > ⚠ pedalpoint server is older than this skill — re-run install.sh
 
-Fall back to Agent for all tasks and skip the remaining steps.
+In both cases fall back to Agent for all tasks and skip the remaining steps.
 
-If `local_llm` is listed, call it with a minimal probe prompt (`"ping"`). If it returns a connection error:
-> ⚠ Ollama unreachable — run `ollama serve` (or open Ollama.app on macOS) to enable local routing. Falling back to Agent for all tasks.
+Call `local_llm_status`. It returns JSON: `backend`, `model`, `base_url`, `reachable`, `repo_root`, `server_version`.
+- **`server_version` missing** (in this or any later pedalpoint tool result):
+  > ⚠ pedalpoint server is older than this skill — re-run install.sh
+- **`reachable` is false:**
+  > ⚠ `<MLX|Ollama>` unreachable — start it with: `<hint>`
 
-Fall back to Agent for all tasks and skip the remaining steps.
+  Hint: backend `mlx` → `mlx_lm.server --model <model>`; backend `ollama` → `ollama serve`. Fall back to Agent for all tasks and skip the remaining steps.
+- **`repo_root` is null:**
+  > ⚠ pedalpoint server is not running inside a git repo — local handoffs disabled.
+
+  Fall back to Agent for all tasks.
 
 Check `PEDALPOINT_MODE` environment variable:
-- `local-only` → skip Step 2 classification, route ALL tasks through Step 3 (Context Courier) to local_llm
-- `passthrough` → skip Steps 2–4, route ALL tasks to Agent spawns
+- `local-only` → skip Step 2 classification, route ALL tasks through Step 3 (Context Courier) to the local path. Skip rule is OFF.
+- `passthrough` → skip Steps 2–4, route ALL tasks to Agent spawns. Never hand off.
 - `hybrid` (default or unset) → follow normal flow below
 
 ---
@@ -40,12 +52,12 @@ Parse the JSON:
 
 **If `circuit` is `"open"`:**
 - Check `expires` field vs current time (`date -u +%Y-%m-%dT%H:%M:%SZ`)
-- If current time < expires: skip to Step 4 (local_llm, no classification)
+- If current time < expires: skip Step 2, run Step 3 (mechanical mode), then the **open-circuit path** in Step 4
 - If current time >= expires: proceed to Step 1b (HALF-OPEN probe)
 
 **If `circuit` is `"api_fallback"`:**
 - Check `expires` field vs current time (`date -u +%Y-%m-%dT%H:%M:%SZ`)
-- If current time < expires: proceed to Step 2 with **API mode active** (substitute `claude_api` for Agent in Steps 2 and 4)
+- If current time < expires: proceed to Step 2 with **API mode active** (judgment tasks go to `claude_api` instead of Agent; see Step 4)
 - If current time >= expires: proceed to Step 1b (HALF-OPEN probe)
 
 ### Step 1b: HALF-OPEN Probe
@@ -54,20 +66,18 @@ Spawn a minimal Agent with prompt: `"Respond with only the word ok"`.
 
 - **Agent succeeds:** Write `{"circuit":"closed"}` to `~/.pedalpoint/state.json`. Proceed to Step 2.
 - **Agent fails with 402/quota/billing/insufficient/upgrade.*plan/plan.*limit/usage.{0,20}limit:**
-  - If current state is `open`: double duration, increment `failure_count`, write updated OPEN state. Proceed to Step 4 (local_llm).
+  - If current state is `open`: double duration, increment `failure_count`, write updated OPEN state. Proceed to Step 3 then the open-circuit path.
   - If current state is `api_fallback`: double duration, increment `failure_count`, write updated `api_fallback` state (circuit stays `api_fallback` — claude_api still available). Proceed to Step 2.
 - **Agent fails with 429/rate-limit:** Wait 30 seconds. Retry probe once. If still failing, treat as transient — proceed to Step 2.
-- **(any other / unrecognized error):** Treat as hard quota. Double duration, increment `failure_count`, write updated state. Log `⚠ HIGH PRIORITY` entry with full error text. Proceed to Step 4 (local_llm) if circuit is `open`; proceed to Step 2 if circuit is `api_fallback`.
+- **(any other / unrecognized error):** Treat as hard quota. Double duration, increment `failure_count`, write updated state. Log `⚠ HIGH PRIORITY` entry with full error text. Proceed to the open-circuit path if circuit is `open`; proceed to Step 2 if circuit is `api_fallback`.
 
 ---
 
 ## Step 2: Classify the Task
 
-> **API mode** (circuit is `api_fallback`): wherever Step 2 says "Agent", substitute `claude_api`. Mechanical routing is unchanged.
-
 Read the task description. Apply these rules:
 
-### Route to `local_llm` (mechanical) when ALL apply:
+### Local draft — mechanical, when ALL apply:
 - Generates code that matches an established pattern already in the codebase
 - No architectural decision required
 - No cross-system integration
@@ -76,7 +86,7 @@ Read the task description. Apply these rules:
 
 **Examples:** generate CRUD following an existing CRUD file, write test function stubs, add type hints to existing functions, generate a config file following an existing template, write a serializer matching the existing serializer pattern.
 
-### Route to `local_llm` draft + Agent review (structural) when ANY apply:
+### Local draft — structural, when ANY apply:
 - Task involves a framework-known pattern:
   - pytest fixture or test function
   - FastAPI route, router, or dependency injection
@@ -100,116 +110,93 @@ Read the task description. Apply these rules:
 
 **When in doubt: route to Agent.**
 
+### Skip rule (hybrid mode, circuit closed or api_fallback)
+
+If a mechanical or structural task's expected **lines changed** (not file size) is under ~30, do it yourself directly with Edit/Write — the handoff overhead costs more than the work. No `local_llm` call, no `record_outcome`.
+
 ---
 
 ## Step 3: Context Courier
 
 Runs for both mechanical and structural tasks. Do not assume a pattern exists — verify it.
 
-When entering Step 3 without a prior classification from Step 2 (e.g., `local-only` mode), use the **Mechanical tasks** section.
+When entering Step 3 without a prior classification from Step 2 (e.g., `local-only` mode or open circuit), use the **Mechanical tasks** section.
 
 ### Mechanical tasks
 
 1. Identify the pattern type from the task (CRUD, serializer, test stub, migration, etc.)
 2. Search the codebase:
    ```bash
-   grep -r "<relevant keyword>" src/ --include="*.py" -l 2>/dev/null
+   grep -rn "<relevant keyword>" src/ --include="*.py" 2>/dev/null
    ```
 3. **Check the result explicitly:**
-   - **No files returned / empty output:** The task is not actually mechanical. Escalate to Agent (judgment path). Do not proceed with local_llm.
-   - **Files returned:** Read the most relevant file. Extract 30–50 lines of the closest matching example.
+   - **No files returned / empty output:** The task is not actually mechanical. Escalate to Agent (judgment path). Do not proceed with a local draft.
+   - **Files returned:** Pick the closest matching example and its 30–50 line range (use the `grep -n` line numbers; Read only if needed to find the range).
 
 ### Structural tasks
 
 1. Identify the convention type (Response model, exception handling, route pattern, model inheritance, fixture style, etc.)
 2. Search the codebase for style conventions:
    ```bash
-   grep -r "<relevant keyword>" . --include="*.py" -l 2>/dev/null
+   grep -rn "<relevant keyword>" . --include="*.py" 2>/dev/null
    ```
    Example keywords: `HTTPException` for error handling, `BaseModel` for Pydantic conventions, `pytest.fixture` for fixture style, `APIRouter` for route structure.
 3. **Check the result:**
-   - **Files returned:** Read the most relevant file. Extract 30–50 lines showing the project's style.
-   - **No files returned, framework-known task:** Proceed. Add to prompt: "No existing project pattern found. Follow framework defaults."
-   - **No files returned, spec-driven only (not framework-known):** Escalate to Agent (judgment path). Do not proceed with local_llm.
+   - **Files returned:** Pick the 30–50 line range that shows the project's style.
+   - **No files returned, framework-known task:** Proceed. Add to `task`: "No existing project pattern found. Follow framework defaults for <framework name>."
+   - **No files returned, spec-driven only (not framework-known):** Escalate to Agent (judgment path). Do not proceed with a local draft.
 
-### Assemble the augmented prompt (both tiers)
+### Build the handoff arguments
 
-Keep total length under 16000 characters:
+- `target_path`: the file to create or replace (repo-relative).
+- `context_paths`: list of `"path"` or `"path:START-END"` (1-indexed, inclusive) from the courier. The server reads these files itself.
+- `task`: the instruction in plain words, plus the framework note if any. **Never paste code into `task`.**
 
-```
-system: "You are a code generator. Follow the provided patterns exactly. Output only code. No explanation."
-
-prompt: |
-  ## Existing pattern (<filepath> lines <N>-<M>):
-  <excerpt from file>
-
-  ## Task:
-  <task description>
-  Follow the exact naming conventions, structure, and patterns shown above.
-```
-
-For structural tasks where no project pattern was found, replace the "Existing pattern" block with:
-```
-  ## Note:
-  No existing project pattern found. Follow framework defaults for <framework name>.
-```
-
-Proceed to Step 4.
+The server already sends the target file's current contents when editing an existing file.
 
 ---
 
 ## Step 4: Execute the Task
 
-### Mechanical path (local_llm)
+Start on a branch: `git checkout -b feat/<task-slug>` (or appropriate prefix).
 
-Call the `local_llm` tool with the augmented prompt from Step 3:
-```
-local_llm(prompt=<augmented prompt>, system="You are a code generator. Follow the provided patterns exactly. Output only code. No explanation.")
-```
+### Local path (circuit closed — mechanical and structural)
 
-Apply the returned string:
-1. `git checkout -b feat/<task-slug>` (or appropriate branch prefix)
-2. Write the returned code to the target file using Write/Edit tools
-3. Run the test suite: `pytest tests/ -x -q`
-4. If tests fail:
+1. Call `local_llm(task=<task>, target_path=<target>, context_paths=[...])`. It writes `<target>.draft` and returns JSON with `handoff_id`, `draft_path`, `lines`, `lines_changed`.
+2. Read `<target>.draft`. Review it against the task.
+3. Fix what's wrong with Edit on the `.draft` (or rewrite it if it's mostly wrong).
+   - **Judgment task in disguise** (security-sensitive, needs design decisions): `rm <target>.draft`, `record_outcome(handoff_id, 1, "<reason>")`, then run the judgment path.
+4. Promote: `mv <target>.draft <target>`
+5. Run the test suite: `pytest tests/ -x -q`
+6. If tests fail:
    - **Trivial** (fix inline): single-line syntax error, missing import whose usage is already present in the file, typo in variable/function name → fix inline, re-run pytest once
-   - **Non-trivial** (escalate): logic error, multiple file changes required, new dependency needed → escalate to Agent
-5. Commit using Conventional Commits format
-6. Mark task complete in the plan
+   - **Non-trivial** (escalate): logic error, multiple file changes required, new dependency needed → escalate to Agent with the task, the failure, and the file path
+7. `record_outcome(handoff_id, score, note)` — score is **what you had to do** (including any test fixes):
 
-Log this task to `~/.pedalpoint/fallback-log.md` only if circuit is OPEN (fallback active).
+   | Score | What Claude did |
+   |---|---|
+   | 7 | Accepted as-is |
+   | 6 | Fixed 1–3 lines |
+   | 5 | Several fixes, same file |
+   | 4 | Rewrote part |
+   | 3 | Rewrote most |
+   | 2 | Started over, draft helped |
+   | 1 | Started over, draft useless |
 
-### Structural path (local_llm draft + Agent review)
-
-Call the `local_llm` tool with the augmented prompt from Step 3:
-```
-local_llm(prompt=<augmented prompt>, system="You are a code generator. Follow the provided patterns exactly. Output only code. No explanation.")
-```
-
-1. `git checkout -b feat/<task-slug>` (or appropriate branch prefix)
-2. Write the returned code to `<target_file>.draft` (NOT the real filename)
-3. Spawn Agent review:
-   ```
-   Review <target_file>.draft against the task description below.
-   - If structurally sound with only minor issues: patch the draft inline and output PATCH.
-   - If significantly wrong but salvageable: rewrite the draft completely and output REWRITE.
-   - If this is a judgment task in disguise or cannot be fixed mechanically: output REJECT and state the reason.
-
-   Task: <task description>
-   ```
-4. Agent result:
-   - `PATCH` → Agent has edited `.draft` inline; proceed to step 5
-   - `REWRITE` → Agent has overwritten `.draft`; proceed to step 5
-   - `REJECT` → delete `.draft`, re-classify as judgment, run judgment path
-5. Rename `<target_file>.draft` → `<target_file>`
-6. Run test suite: `pytest tests/ -x -q`
-7. If tests fail:
-   - **Trivial** (fix inline): single-line syntax error, missing import whose usage is already present in the file, typo in variable/function name → fix inline, re-run pytest once
-   - **Non-trivial** (escalate): logic error, multiple file changes required, new dependency needed → escalate to judgment path; pass draft content as context to Agent
 8. Commit using Conventional Commits format
 9. Mark task complete in the plan
 
-Log this task to `~/.pedalpoint/fallback-log.md` only if Agent review was skipped due to error (see Step 4b error table).
+### API fallback path (circuit `api_fallback`)
+
+Mechanical and structural tasks use the local path above unchanged. Judgment tasks call `claude_api(task=<task>, target_path=<target>, context_paths=[...])` instead of spawning an Agent. It has the same contract as `local_llm`: writes `<target>.draft`, returns JSON with `handoff_id`. Then follow local path steps 2–9.
+
+### Open-circuit path (circuit `open` — Claude quota exhausted)
+
+1. Call `local_llm(task, target_path, context_paths)` (skip rule OFF).
+2. No review: `mv <target>.draft <target>`
+3. Run `pytest tests/ -x -q`; trivial failures fixed inline only if possible without review.
+4. Commit with `[unreviewed]` in the message.
+5. Append a "task rerouted" entry to `~/.pedalpoint/fallback-log.md` (format below). Do NOT call `record_outcome`.
 
 ### Judgment path (Agent)
 
@@ -221,50 +208,41 @@ Spawn an Agent with:
 
 Monitor the Agent spawn result. On error, proceed to Step 4b.
 
-### Step 4b: Agent Error Handling
+### Step 4b: Error Handling
 
-Parse the error text from the failed Agent spawn:
+**Draft errors (`local_llm` / `claude_api`) — check this table FIRST. None of these are circuit events; never change state.json for them:**
+
+| Error text contains | Action |
+|---|---|
+| `outside the project repo`, `Not in a git repository`, `must be a file` | Do the task yourself directly. |
+| `too large for local regeneration`, `Context too large` | Do the task yourself directly. |
+| `Cannot read`, `Bad line range` | Fix the `context_paths` / `target_path` and retry once. Still failing: do the task yourself. |
+| `Model returned empty output` | Retry once. Still empty: do the task yourself. |
+| `Model output truncated` | Split the task into smaller files, or do it yourself. |
+| `not reachable`, `timed out` (from `local_llm`) | Print `⚠ local LLM unreachable — falling back to Claude`. Do the task yourself. |
+| `not found — run:` | Print the error (it contains the download command). Do the task yourself. |
+| **any other `local_llm` error**, or a `claude_api` error that does not start with `HTTP `, `Anthropic API`, or `ANTHROPIC_API_KEY` | Do the task yourself directly. Never treat it as quota. |
+
+In the **open-circuit path**, "do the task yourself" is not possible: skip the task, log it to `fallback-log.md` with the error text, and continue with the next task.
+
+**Agent spawn errors (judgment path):**
 
 | Error pattern | Action |
 |---|---|
-| `429` or `rate.?limit` | Wait 30s, retry (up to 3 times). After 3 failures: route this task only to local_llm (circuit stays CLOSED) |
-| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state if circuit was already `api_fallback`; write `api_fallback` state if circuit was `closed`. Re-route this task: if writing `api_fallback`, re-route to `claude_api`; if writing `open`, re-route to local_llm via Step 3. |
-| `529`, `overload`, `capacity` | Route this task only to local_llm. Circuit stays CLOSED for next task. |
-| `timeout`, `connection` | Print `⚠ local LLM unreachable — falling back to Claude (run \`ollama serve\` to restore)`. Retry once. If still failing, treat as 529. |
-| **(any other / unrecognized error)** | Treat as hard quota. Write `api_fallback` state if circuit is `closed`; write OPEN state if circuit is `api_fallback`. Re-route this task to `claude_api` or local_llm accordingly. Log `⚠ HIGH PRIORITY` entry with full error text. |
+| `429` or `rate.?limit` | Wait 30s, retry (up to 3 times). After 3 failures: route this task only to the local path (circuit stays CLOSED) |
+| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state if circuit was already `api_fallback`; write `api_fallback` state if circuit was `closed`. Re-route this task: if writing `api_fallback`, re-route to `claude_api`; if writing `open`, re-route to the open-circuit path via Step 3. |
+| `529`, `overload`, `capacity` | Route this task only to the local path. Circuit stays CLOSED for next task. |
+| **(any other / unrecognized error)** | Treat as hard quota. Write `api_fallback` state if circuit is `closed`; write OPEN state if circuit is `api_fallback`. Re-route this task to `claude_api` or the open-circuit path accordingly. Log `⚠ HIGH PRIORITY` entry with full error text. |
 
-**`claude_api` errors (circuit is `api_fallback`):**
-
-| Error pattern | Action |
-|---|---|
-| `429` or `rate.?limit` | Wait 30s, retry once. Still failing: for judgment tasks, reroute to local_llm this task only; circuit stays `api_fallback`. |
-| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit`, `401`, `unauthorized`, `invalid.*key` | Write OPEN state with `failure_count=1` to `~/.pedalpoint/state.json`. Re-route this task to local_llm via Step 3. |
-| `529`, `overload`, `capacity` | Reroute this task only to local_llm. Circuit stays `api_fallback`. |
-| `timeout`, `connection`, `not reachable` | Retry once. Still failing: reroute this task to local_llm. Circuit stays `api_fallback`. |
-| `ANTHROPIC_API_KEY not set` | Write OPEN state with `failure_count=1`. Re-route this task to local_llm via Step 3. |
-| **(any other / unrecognized error)** | Write OPEN state with `failure_count=1`. Re-route this task to local_llm via Step 3. Log `⚠ HIGH PRIORITY` entry with full error text. |
-
-**`claude_api` structural review errors (circuit is `api_fallback`):**
+**`claude_api` API errors (circuit is `api_fallback`; only errors starting with `HTTP `, `Anthropic API`, or `ANTHROPIC_API_KEY`):**
 
 | Error pattern | Action |
 |---|---|
-| `429` or `rate.?limit` | Wait 30s, retry review once. Still failing: rename `.draft` → target file, flag commit `[unreviewed]`, log standard structural fallback entry. |
-| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit`, `401`, `unauthorized`, `invalid.*key`, `ANTHROPIC_API_KEY not set` | Write OPEN state with `failure_count=1`. Rename `.draft` → target file. Log `⚠ HIGH PRIORITY` structural fallback entry. |
-| `529`, `overload`, `capacity` | Rename `.draft` → target file, flag commit `[unreviewed]`, log standard structural fallback entry. Circuit stays `api_fallback`. |
-| `timeout`, `connection`, `not reachable` | Delete `.draft`. Re-classify as judgment. Run `claude_api` judgment path. |
-| **(any other / unrecognized error)** | Write OPEN state with `failure_count=1`. Rename `.draft` → target file. Log `⚠ HIGH PRIORITY` structural fallback entry with full error text. |
-
-**Structural path Agent review errors:**
-
-When the Agent review spawn (step 3 of the structural path) fails:
-
-| Error pattern | Action |
-|---|---|
-| `429` or `rate.?limit` | Wait 30s, retry review once. Still failing: rename `.draft` → target file, flag commit message `[unreviewed]`, log standard structural fallback entry. |
-| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit` | Write OPEN state (see below). Rename `.draft` → target file (use draft content as-is; do not re-run local_llm). Log HIGH PRIORITY structural fallback entry. |
-| `529`, `overload`, `capacity` | Rename `.draft` → target file, flag commit message `[unreviewed]`, log standard structural fallback entry. Circuit stays CLOSED. |
-| `timeout`, `connection` | Delete `.draft`. Re-classify as judgment. Run judgment path. |
-| **(any other / unrecognized error)** | Write OPEN state (see below). Rename `.draft` → target file. Log `⚠ HIGH PRIORITY` structural fallback entry with full error text. |
+| `429` or `rate.?limit` | Wait 30s, retry once. Still failing: route this task to the local path; circuit stays `api_fallback`. |
+| `402`, `quota`, `billing`, `insufficient`, `upgrade.*plan`, `plan.*limit`, `usage.{0,20}limit`, `401`, `unauthorized`, `invalid.*key`, `ANTHROPIC_API_KEY not set` | Write OPEN state with `failure_count=1` to `~/.pedalpoint/state.json`. Re-route this task to the open-circuit path via Step 3. |
+| `529`, `overload`, `capacity` | Route this task only to the local path. Circuit stays `api_fallback`. |
+| `Anthropic API not reachable` | Retry once. Still failing: route this task to the local path. Circuit stays `api_fallback`. |
+| **(any other / unrecognized error)** | Write OPEN state with `failure_count=1`. Re-route this task to the open-circuit path via Step 3. Log `⚠ HIGH PRIORITY` entry with full error text. |
 
 **Writing OPEN state** (on 402 quota error):
 ```json
@@ -280,28 +258,20 @@ When the Agent review spawn (step 3 of the structural path) fails:
 ```
 Write this to `~/.pedalpoint/state.json` using the Write tool.
 
-**Logging rerouted tasks** — append to `~/.pedalpoint/fallback-log.md`:
+**Logging open-circuit tasks** — append to `~/.pedalpoint/fallback-log.md`:
 ```markdown
 ## <ISO timestamp> — task rerouted (reason: <reason>)
 **Task:** <task description>
-**Response preview:** <first 200 chars of local_llm response>
+**File:** <target path> (committed [unreviewed])
 ---
 ```
 
-**Logging structural fallbacks (429/529 review skip)** — append to `~/.pedalpoint/fallback-log.md`:
+Use `⚠ HIGH PRIORITY` in the heading when the reason was an unrecognized error or the task was structural:
 ```markdown
-## <ISO timestamp> — structural draft committed unreviewed (reason: <reason>)
+## <ISO timestamp> — task rerouted (reason: <reason>) ⚠ HIGH PRIORITY
 **Task:** <task description>
-**Draft preview:** <first 200 chars of local_llm response>
----
-```
-
-**Logging structural fallbacks (402 quota or circuit OPEN mid-task)** — append to `~/.pedalpoint/fallback-log.md`:
-```markdown
-## <ISO timestamp> — structural draft committed unreviewed (reason: <reason>) ⚠ HIGH PRIORITY
-**Task:** <task description>
-**Risk:** Agent review skipped due to quota. Logic correctness unverified.
-**Draft preview:** <first 200 chars of local_llm response>
+**Risk:** Claude review skipped due to quota. Logic correctness unverified.
+**File:** <target path> (committed [unreviewed])
 ---
 ```
 
@@ -312,10 +282,10 @@ Write this to `~/.pedalpoint/state.json` using the Write tool.
 After all tasks in the plan are complete:
 
 1. Check `~/.pedalpoint/fallback-log.md` for entries added in this session
-   Note: tasks handled by `claude_api` during `api_fallback` are NOT logged here — their output quality is equivalent to Agent. Only local_llm reroutes are logged.
 2. Count total entries since session start (N)
 3. Count entries containing `⚠ HIGH PRIORITY` (K)
 4. If N > 0:
-   > "N tasks ran on local LLM during fallback. K structural drafts marked HIGH PRIORITY (quota fallback — Agent review skipped). Review HIGH PRIORITY items first. Run Claude review pass now? (y/n)"
+   > "N tasks ran on local LLM without Claude review (circuit open). K marked HIGH PRIORITY. Review HIGH PRIORITY items first. Run Claude review pass now? (y/n)"
 5. If user says yes: spawn Agent with prompt:
-   > "Review the work done by local LLM during fallback. Check `~/.pedalpoint/fallback-log.md` for the task list — prioritize any entries marked ⚠ HIGH PRIORITY first, as these were committed without Agent review due to quota exhaustion. Then run `git log --oneline -<N>` and `git diff HEAD~<N>` to see the changes. Identify any issues with code quality, correctness, or missed requirements and summarize your findings."
+   > "Review the work done by local LLM during fallback. Check `~/.pedalpoint/fallback-log.md` for the task list — prioritize any entries marked ⚠ HIGH PRIORITY first, as these were committed without review due to quota exhaustion. Then run `git log --oneline -<N>` and `git diff HEAD~<N>` to see the changes. Identify any issues with code quality, correctness, or missed requirements and summarize your findings."
+6. Mention that `pedalpoint stats` shows how many Claude tokens the local handoffs saved.

@@ -12,13 +12,11 @@
 1. Classified as structural (FastAPI route — framework-known)
 2. Context Courier (structural): greps for `APIRouter\|HTTPException` in project
 3. Grep returns `src/api/users.py`
-4. Skill reads 30-50 lines from users.py showing route structure and error handling
-5. Augmented prompt includes the users.py excerpt as style reference
-6. local_llm called with style context
-7. Output written to `src/api/posts.py.draft`
-8. Agent review spawned
+4. Skill locates the 30–50 lines showing route structure and error handling (e.g. `grep -n` or Read) to pick a line range
+5. `local_llm` called with `context_paths=["src/api/users.py:12-55"]` and `target_path="src/api/posts.py"`
+6. Server writes `src/api/posts.py.draft`; Claude reviews inline
 
 ## Verification
 - Courier grep ran for style conventions (not implementation pattern)
-- Prompt included excerpt from users.py
-- Prompt did NOT include "No existing project pattern found" note
+- users.py passed as a `path:START-END` context spec — excerpt NOT pasted into `task`
+- `task` did NOT include "No existing project pattern found" note

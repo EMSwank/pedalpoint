@@ -1,4 +1,4 @@
-# Scenario: Structural Path — Agent Patches Draft
+# Scenario: Structural Path — Claude Patches Draft Inline (score 6)
 
 ## Setup
 - Project has `src/api/users.py` with existing FastAPI routes
@@ -10,18 +10,18 @@
 
 ## Expected Behavior
 1. Classified as structural (FastAPI route — framework-known)
-2. Courier greps for `APIRouter`, finds users.py, extracts 40 lines
-3. local_llm called with style excerpt, returns POST /posts handler code
-4. Code written to `src/api/posts.py.draft`
-5. Agent review spawned — draft has minor issue (missing response_model)
-6. Agent outputs PATCH and adds `response_model=PostResponse` inline
-7. Skill renames `src/api/posts.py.draft` → `src/api/posts.py`
+2. Courier greps for `APIRouter`, finds users.py, picks a line range
+3. `local_llm(task, target_path="src/api/posts.py", context_paths=["src/api/users.py:10-50"])`
+4. Server writes `src/api/posts.py.draft`
+5. Claude Reads the draft — one minor issue (missing `response_model=PostResponse`)
+6. Claude fixes it with a single Edit on the `.draft`
+7. `mv src/api/posts.py.draft src/api/posts.py`
 8. pytest passes
-9. Committed as `feat: add POST /posts route`
+9. `record_outcome(handoff_id, 6, "added response_model")`
+10. Committed as `feat: add POST /posts route`
 
 ## Verification
-- .draft file used (not written directly to posts.py)
-- Agent review spawned before rename
-- Agent output was PATCH (not REWRITE or REJECT)
+- `.draft` file used (never written directly to posts.py)
+- No review Agent spawned; the fix was a small inline Edit
+- `record_outcome` score is 6 (fixed 1–3 lines)
 - Final file is posts.py (no .draft suffix)
-- pytest passed

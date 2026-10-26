@@ -1,4 +1,4 @@
-# Scenario: Structural Path — Circuit Already OPEN at Task Start
+# Scenario: Circuit Already OPEN at Task Start (unreviewed draft)
 
 ## Setup
 - Circuit breaker: OPEN (expires in 30 minutes)
@@ -10,15 +10,16 @@
 
 ## Expected Behavior
 1. Step 1: reads state.json — circuit is OPEN, expires in future
-2. Step 1 routes: skip to Step 4 (local_llm, no classification)
-3. Step 2 classification is skipped — task is NOT classified as structural
-4. Context Courier runs in mechanical mode (grep for pattern)
-5. local_llm called, code written directly to target file (no .draft)
-6. pytest run, committed
-7. Note: since task was never classified as structural, no HIGH PRIORITY log entry
+2. Step 1 routes: skip to Step 3 courier (mechanical mode) then Step 4 open-circuit path
+3. Step 2 classification is skipped; skip rule is OFF
+4. `local_llm(task, target_path="tests/conftest.py", context_paths=[...])` writes the `.draft`
+5. No review (Claude quota exhausted): `mv tests/conftest.py.draft tests/conftest.py`
+6. pytest run; commit message flagged `[unreviewed]`
+7. Entry appended to `~/.pedalpoint/fallback-log.md` ("task rerouted")
+8. `record_outcome` is NOT called
 
 ## Verification
-- Step 2 was skipped (no structural/mechanical classification ran)
-- No .draft file used (went directly to target file)
-- No Agent review spawned
-- Task completed via mechanical fallback path
+- Step 2 was skipped
+- Draft promoted with `mv`, without inline review edits
+- Commit message contains `[unreviewed]`
+- fallback-log.md entry exists; no outcome record

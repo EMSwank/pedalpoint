@@ -21,6 +21,7 @@ setup() {
   #       other calls (ollama reachability check) fail → warn-only path in script
   cat > "$STUB_DIR/curl" <<'EOF'
 #!/bin/sh
+printf '%s\n' "$*" >> "$HOME/.curl_args"
 out=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -43,6 +44,28 @@ EOF
   chmod +x "$STUB_DIR/pipx"
   printf '#!/bin/sh\nexit 0\n' > "$STUB_DIR/pip"
   chmod +x "$STUB_DIR/pip"
+
+  # Hermetic stubs: record arguments instead of touching real tools/config
+  for _tool in claude ollama uvx pedalpoint-server; do
+    stub_recorder "$_tool"
+  done
+  printf '#!/bin/sh\nprintf "pedalpoint 0.4.0\\n"\n' > "$STUB_DIR/pedalpoint"
+  chmod +x "$STUB_DIR/pedalpoint"
+  stub_platform Linux x86_64
+}
+
+# stub_recorder TOOL — stub that appends its arguments to $HOME/.TOOL_args
+stub_recorder() {
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$HOME/.%s_args"\nexit 0\n' "$1" \
+    > "$STUB_DIR/$1"
+  chmod +x "$STUB_DIR/$1"
+}
+
+# stub_platform SYSTEM MACHINE — fake `uname -s` / `uname -m`
+stub_platform() {
+  printf '#!/bin/sh\n[ "$1" = "-m" ] && { printf "%s\\n"; exit 0; }\nprintf "%s\\n"\n' \
+    "$2" "$1" > "$STUB_DIR/uname"
+  chmod +x "$STUB_DIR/uname"
 }
 
 teardown() {
@@ -74,54 +97,137 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-# ── MCP config ────────────────────────────────────────────────────────────────
+# ── MCP registration ──────────────────────────────────────────────────────────
 
-@test "mcp.json created from scratch when absent" {
-  run sh "$INSTALL_SH"
+@test "registers MCP server via claude mcp add with backend env" {
+  run sh "$INSTALL_SH" --backend ollama
   [ "$status" -eq 0 ]
-  [ -f "$HOME/.claude/mcp.json" ]
-  grep -q '"pedalpoint"' "$HOME/.claude/mcp.json"
+  grep -q "mcp add pedalpoint pedalpoint-server --scope user" "$HOME/.claude_args"
+  grep -q "PEDALPOINT_BACKEND=ollama" "$HOME/.claude_args"
+  grep -q "PEDALPOINT_BASE_URL=http://localhost:11434/v1" "$HOME/.claude_args"
+  grep -q "PEDALPOINT_MODEL=gemma4:12b" "$HOME/.claude_args"
 }
 
-@test "mcp.json present + jq present: entry written via jq" {
-  cat > "$STUB_DIR/jq" <<'EOF'
+# ── Backends ──────────────────────────────────────────────────────────────────
+
+@test "--backend mlx installs mlx-lm, downloads model, skips ollama" {
+  stub_recorder uv
+  run sh "$INSTALL_SH" --backend mlx
+  [ "$status" -eq 0 ]
+  [ ! -f "$HOME/.ollama_args" ]
+  grep -q "tool install mlx-lm" "$HOME/.uv_args"
+  grep -q -- "--from huggingface_hub hf download mlx-community/gemma-4-e4b-it-4bit" \
+    "$HOME/.uvx_args"
+  grep -q "PEDALPOINT_BACKEND=mlx" "$HOME/.claude_args"
+  grep -q "PEDALPOINT_BASE_URL=http://localhost:8080/v1" "$HOME/.claude_args"
+  grep -q "PEDALPOINT_MODEL=mlx-community/gemma-4-e4b-it-4bit" "$HOME/.claude_args"
+  printf '%s\n' "$output" | grep -q "mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit"
+}
+
+@test "mlx model download failure warns but does not abort" {
+  printf '#!/bin/sh\nexit 1\n' > "$STUB_DIR/uvx"
+  chmod +x "$STUB_DIR/uvx"
+  run sh "$INSTALL_SH" --backend mlx
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q "WARNING: Could not download"
+}
+
+@test "--backend ollama pulls the model" {
+  # reachability check must succeed for the pull path: any curl without -o passes
+  cat > "$STUB_DIR/curl" <<'EOF'
 #!/bin/sh
-printf '{"mcpServers":{"pedalpoint":{"command":"pedalpoint-server"}}}\n'
+printf '%s\n' "$*" >> "$HOME/.curl_args"
+out=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    *)  shift ;;
+  esac
+done
+[ -z "$out" ] && exit 0
+mkdir -p "$(dirname "$out")"
+printf '# stub skill\n' > "$out"
+EOF
+  chmod +x "$STUB_DIR/curl"
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  grep -q "pull gemma4:12b" "$HOME/.ollama_args"
+}
+
+@test "default backend is mlx on Apple Silicon" {
+  stub_platform Darwin arm64
+  run sh "$INSTALL_SH"
+  [ "$status" -eq 0 ]
+  grep -q "PEDALPOINT_BACKEND=mlx" "$HOME/.claude_args"
+}
+
+@test "default backend is ollama elsewhere" {
+  run sh "$INSTALL_SH"
+  [ "$status" -eq 0 ]
+  grep -q "PEDALPOINT_BACKEND=ollama" "$HOME/.claude_args"
+}
+
+@test "re-run keeps backend saved in ~/.pedalpoint/backend" {
+  stub_platform Darwin arm64
+  mkdir -p "$HOME/.pedalpoint"
+  printf 'ollama\n' > "$HOME/.pedalpoint/backend"
+  run sh "$INSTALL_SH"
+  [ "$status" -eq 0 ]
+  grep -q "PEDALPOINT_BACKEND=ollama" "$HOME/.claude_args"
+}
+
+@test "re-run of a 0.3 Ollama install keeps ollama" {
+  stub_platform Darwin arm64
+  cat > "$STUB_DIR/claude" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HOME/.claude_args"
+if [ "$1 $2" = "mcp get" ]; then
+  printf '  Environment:\n    PEDALPOINT_BASE_URL=http://localhost:11434/v1\n'
+fi
 exit 0
 EOF
-  chmod +x "$STUB_DIR/jq"
-
-  mkdir -p "$HOME/.claude"
-  printf '{"mcpServers":{}}\n' > "$HOME/.claude/mcp.json"
-
+  chmod +x "$STUB_DIR/claude"
   run sh "$INSTALL_SH"
   [ "$status" -eq 0 ]
-  grep -q '"pedalpoint"' "$HOME/.claude/mcp.json"
+  grep -q "PEDALPOINT_BACKEND=ollama" "$HOME/.claude_args"
 }
 
-@test "mcp.json present + jq absent exits 1 with helpful message" {
-  if command -v jq >/dev/null 2>&1; then
-    skip "system jq present — cannot test jq-absent path portably"
-  fi
+@test "--backend overrides saved backend and is saved" {
+  mkdir -p "$HOME/.pedalpoint"
+  printf 'ollama\n' > "$HOME/.pedalpoint/backend"
+  run sh "$INSTALL_SH" --backend mlx
+  [ "$status" -eq 0 ]
+  grep -q "PEDALPOINT_BACKEND=mlx" "$HOME/.claude_args"
+  [ "$(cat "$HOME/.pedalpoint/backend")" = "mlx" ]
+}
 
-  mkdir -p "$HOME/.claude"
-  printf '{"mcpServers":{}}\n' > "$HOME/.claude/mcp.json"
+@test "--model overrides backend default" {
+  run sh "$INSTALL_SH" --backend mlx --model mlx-community/Qwen3.5-4B-MLX-4bit
+  [ "$status" -eq 0 ]
+  grep -q "PEDALPOINT_MODEL=mlx-community/Qwen3.5-4B-MLX-4bit" "$HOME/.claude_args"
+}
 
+@test "unknown backend exits 1" {
+  run sh "$INSTALL_SH" --backend foo
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -q "Unknown backend"
+}
+
+# ── Skill version pinning ─────────────────────────────────────────────────────
+
+@test "skill fetched from release tag matching installed version" {
   run sh "$INSTALL_SH"
-  [ "$status" -eq 1 ]
-  printf '%s\n' "${output}" | grep -q "jq not found"
+  [ "$status" -eq 0 ]
+  grep -q "/v0.4.0/skills/route-tasks/SKILL.md" "$HOME/.curl_args"
 }
 
-# ── JSON injection guards ─────────────────────────────────────────────────────
-
-@test "PEDALPOINT_MODEL with double-quote rejected" {
-  run sh "$INSTALL_SH" --model 'bad"model'
-  [ "$status" -eq 1 ]
-}
-
-@test "PEDALPOINT_BASE_URL with backslash rejected" {
-  run sh "$INSTALL_SH" --base-url 'http://bad\host'
-  [ "$status" -eq 1 ]
+@test "skill falls back to main with warning when version unknown" {
+  printf '#!/bin/sh\nexit 1\n' > "$STUB_DIR/pedalpoint"
+  chmod +x "$STUB_DIR/pedalpoint"
+  run sh "$INSTALL_SH"
+  [ "$status" -eq 0 ]
+  grep -q "/main/skills/route-tasks/SKILL.md" "$HOME/.curl_args"
+  printf '%s\n' "$output" | grep -q "WARNING: could not determine pedalpoint version"
 }
 
 # ── Package manager detection ─────────────────────────────────────────────────
@@ -139,6 +245,13 @@ EOF
   [ "$status" -eq 0 ]
   [ -f "$HOME/.pkg_called" ]
   grep -q "uv" "$HOME/.pkg_called"
+}
+
+@test "uv install upgrades an existing pedalpoint" {
+  stub_recorder uv
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  grep -q "tool install --upgrade pedalpoint" "$HOME/.uv_args"
 }
 
 @test "pipx used when uv absent" {

@@ -9,6 +9,7 @@ from typing import Literal
 
 import httpx
 
+from pedalpoint import backends
 from pedalpoint.config import Config, get_config
 
 # ── constants ────────────────────────────────────────────────────────────────
@@ -60,29 +61,38 @@ def check_binary_in_path() -> CheckResult:
     )
 
 
-def check_ollama_reachable(
+def check_backend(cfg: Config) -> CheckResult:
+    """Check 2: PEDALPOINT_BACKEND is a supported backend."""
+    if cfg.backend in backends.BACKENDS:
+        return CheckResult("PASS", f"Backend: {cfg.backend}", None)
+    return CheckResult(
+        "FAIL",
+        f"Unknown backend {cfg.backend!r}",
+        "export PEDALPOINT_BACKEND=mlx",
+    )
+
+
+def check_server_reachable(
     cfg: Config,
     response: httpx.Response | None | _Unset = _UNSET,
 ) -> CheckResult:
-    """Check 2: Ollama is reachable at the configured base URL.
+    """Check 3: the local model server is reachable at the configured base URL.
 
     Pass a pre-fetched response (or None for unreachable) to avoid a second
     HTTP call when called from run_all.
     """
     if isinstance(response, _Unset):
         response = _fetch_models(cfg)
+    name = backends.label(cfg)
+    hint = backends.start_hint(cfg)
     if response is None:
-        return CheckResult(
-            "FAIL",
-            f"Ollama not reachable at {cfg.base_url}",
-            "ollama serve",
-        )
+        return CheckResult("FAIL", f"{name} not reachable at {cfg.base_url}", hint)
     if response.status_code == 200:
-        return CheckResult("PASS", f"Ollama reachable at {cfg.base_url}", None)
+        return CheckResult("PASS", f"{name} reachable at {cfg.base_url}", None)
     return CheckResult(
         "FAIL",
-        f"Ollama returned HTTP {response.status_code} at {cfg.base_url}",
-        "ollama serve",
+        f"{name} returned HTTP {response.status_code} at {cfg.base_url}",
+        hint,
     )
 
 
@@ -90,46 +100,49 @@ def check_model_available(
     cfg: Config,
     response: httpx.Response | None | _Unset = _UNSET,
 ) -> CheckResult:
-    """Check 3: Required model is available in Ollama.
+    """Check 4: the configured model is listed by the model server.
 
     Pass a pre-fetched response (or None for unreachable) to avoid a second
-    HTTP call when called from run_all.  When response is None, Ollama is
-    unreachable — the fix is `ollama serve`, not `ollama pull`.
+    HTTP call when called from run_all.  When response is None, the server is
+    unreachable — the fix is to start it, not to download the model.
     """
     if isinstance(response, _Unset):
         response = _fetch_models(cfg)
+    name = backends.label(cfg)
+    start = backends.start_hint(cfg)
     if response is None:
         return CheckResult(
             "FAIL",
-            f"Model {cfg.model} check skipped — Ollama unreachable at {cfg.base_url}",
-            "ollama serve",
+            f"Model {cfg.model} check skipped — {name} unreachable at {cfg.base_url}",
+            start,
         )
     if response.status_code != 200:
         return CheckResult(
             "FAIL",
             f"Model {cfg.model} check skipped"
-            f" — Ollama returned HTTP {response.status_code}",
-            "ollama serve",
+            f" — {name} returned HTTP {response.status_code}",
+            start,
         )
+    # mlx_lm.server lists every model in the local HF cache by repo id, so for
+    # mlx "available" means "downloaded" (verified with mlx-lm 0.32).
     models = [m["id"] for m in response.json().get("data", [])]
     if cfg.model in models:
         return CheckResult("PASS", f"Model {cfg.model} available", None)
-    return CheckResult(
-        "FAIL",
-        f"Model {cfg.model} not available",
-        f"ollama pull {cfg.model}",
-    )
+    fix = backends.pull_hint(cfg, cfg.model)
+    if cfg.backend == "mlx":
+        fix += f" then restart: {start}"
+    return CheckResult("FAIL", f"Model {cfg.model} not available", fix)
 
 
 def check_pedalpoint_dir() -> CheckResult:
-    """Check 4: ~/.pedalpoint/ directory exists (creates it if missing)."""
+    """Check 5: ~/.pedalpoint/ directory exists (creates it if missing)."""
     pedalpoint_dir = Path.home() / ".pedalpoint"
     pedalpoint_dir.mkdir(parents=True, exist_ok=True)
     return CheckResult("PASS", "~/.pedalpoint/ exists", None)
 
 
 def check_api_key(cfg: Config) -> CheckResult:
-    """Check 5: ANTHROPIC_API_KEY is set (WARN if missing)."""
+    """Check 6: ANTHROPIC_API_KEY is set (WARN if missing)."""
     if cfg.api_key:
         return CheckResult("PASS", "ANTHROPIC_API_KEY set", None)
     return CheckResult(
@@ -143,13 +156,14 @@ def check_api_key(cfg: Config) -> CheckResult:
 
 
 def run_all(cfg: Config | None = None) -> list[CheckResult]:
-    """Run all checks in order. Fetches /models once for checks 2 and 3."""
+    """Run all checks in order. Fetches /models once for the server checks."""
     if cfg is None:
         cfg = get_config()
     response = _fetch_models(cfg)
     return [
         check_binary_in_path(),
-        check_ollama_reachable(cfg, response),
+        check_backend(cfg),
+        check_server_reachable(cfg, response),
         check_model_available(cfg, response),
         check_pedalpoint_dir(),
         check_api_key(cfg),

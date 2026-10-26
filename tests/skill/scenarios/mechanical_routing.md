@@ -11,14 +11,13 @@
 ## Expected Behavior
 1. Skill classifies as mechanical (CRUD matching existing pattern)
 2. Skill greps for existing CRUD: `grep -r "CRUD\|router\|get_db" src/ --include="*.py" -l`
-3. Grep returns `src/api/users.py`
-4. Skill reads 30-50 lines from users.py
-5. Skill calls `local_llm` with augmented prompt containing the excerpt
-6. Skill writes returned code to `src/api/posts.py`
-7. Skill runs pytest, commits
+3. Grep returns `src/api/users.py`; skill picks the relevant line range
+4. Expected output is a new ~60-line file → skip rule does not apply
+5. `local_llm(task, target_path="src/api/posts.py", context_paths=["src/api/users.py:1-60"])`
+6. Claude Reads `src/api/posts.py.draft`, accepts it, `mv` → `src/api/posts.py`
+7. pytest passes; `record_outcome(handoff_id, 7)`; commit
 
 ## Verification
-- `local_llm` tool was called (not Agent)
-- Prompt included excerpt from users.py
-- `src/api/posts.py` was created
-- Commit exists on `feat/post-crud` branch
+- `local_llm` tool was called (not Agent) with a context path, not pasted code
+- Claude never re-typed the generated code
+- `src/api/posts.py` was created; commit exists on a feat branch

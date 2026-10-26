@@ -17,17 +17,16 @@ structural (framework-known: pytest fixture — framework provides the template)
 2. Step 3 Context Courier runs for structural task:
    - Greps for `pytest.fixture` in project
    - Grep returns empty (no existing fixtures)
-   - Task is framework-known → proceeds with "No existing project pattern found. Follow framework defaults." note
-3. Skill calls local_llm with augmented prompt including framework note
-4. Skill writes returned code to `tests/conftest.py.draft`
-5. Skill spawns Agent review with PATCH/REWRITE/REJECT prompt
-6. Agent responds PATCH or REWRITE
-7. Skill renames `tests/conftest.py.draft` → `tests/conftest.py`
-8. Skill runs pytest, commits
+   - Task is framework-known → `task` text includes "No existing project pattern found. Follow framework defaults for pytest."
+3. Expected change is > 30 lines or a new file of fixture boilerplate → skip rule does not apply
+4. Skill calls `local_llm(task=..., target_path="tests/conftest.py", context_paths=[])`
+5. Server writes `tests/conftest.py.draft`; skill Reads the draft
+6. Draft is correct → `mv tests/conftest.py.draft tests/conftest.py`
+7. Skill runs pytest → passes
+8. `record_outcome(handoff_id, 7)`; commit
 
 ## Verification
-- local_llm was called (not Agent for initial generation)
-- Output written to `tests/conftest.py.draft` before Agent review
-- Agent review was spawned
+- local_llm was called with `target_path`, not with pasted code
+- No review Agent was spawned; Claude reviewed the draft inline
 - Final file is `tests/conftest.py` (no `.draft` suffix)
-- Commit exists on feat branch
+- `record_outcome` called with the handoff_id from the local_llm result

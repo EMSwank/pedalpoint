@@ -1,5 +1,6 @@
 """Unit tests for pedalpoint.doctor — run before implementing doctor.py."""
 
+import dataclasses
 from unittest.mock import patch
 
 import httpx
@@ -15,6 +16,7 @@ from pedalpoint.config import Config, get_config
 BASE_CFG = Config(
     base_url="http://localhost:11434/v1",
     model="gemma4:12b",
+    backend="ollama",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -26,6 +28,7 @@ BASE_CFG = Config(
 BASE_CFG_WITH_KEY = Config(
     base_url="http://localhost:11434/v1",
     model="gemma4:12b",
+    backend="ollama",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -64,18 +67,18 @@ def test_binary_check_fails_when_not_found():
 
 
 # ---------------------------------------------------------------------------
-# check_ollama_reachable
+# check_server_reachable
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
 def test_ollama_reachable_passes():
-    from pedalpoint.doctor import check_ollama_reachable
+    from pedalpoint.doctor import check_server_reachable
 
     respx.get("http://localhost:11434/v1/models").mock(
         return_value=httpx.Response(200, json=MODELS_RESPONSE)
     )
-    result = check_ollama_reachable(BASE_CFG)
+    result = check_server_reachable(BASE_CFG)
     assert result.status == "PASS"
     assert "http://localhost:11434/v1" in result.message
     assert result.fix is None
@@ -83,12 +86,12 @@ def test_ollama_reachable_passes():
 
 @respx.mock
 def test_ollama_reachable_fails_on_connect_error():
-    from pedalpoint.doctor import check_ollama_reachable
+    from pedalpoint.doctor import check_server_reachable
 
     respx.get("http://localhost:11434/v1/models").mock(
         side_effect=httpx.ConnectError("refused")
     )
-    result = check_ollama_reachable(BASE_CFG)
+    result = check_server_reachable(BASE_CFG)
     assert result.status == "FAIL"
     assert result.fix is not None
     assert "ollama serve" in result.fix
@@ -96,12 +99,12 @@ def test_ollama_reachable_fails_on_connect_error():
 
 @respx.mock
 def test_ollama_reachable_fails_on_non_200():
-    from pedalpoint.doctor import check_ollama_reachable
+    from pedalpoint.doctor import check_server_reachable
 
     respx.get("http://localhost:11434/v1/models").mock(
         return_value=httpx.Response(500, text="error")
     )
-    result = check_ollama_reachable(BASE_CFG)
+    result = check_server_reachable(BASE_CFG)
     assert result.status == "FAIL"
     assert result.fix is not None
     assert "ollama serve" in result.fix
@@ -352,7 +355,7 @@ def test_format_report_exact_output_structure():
 
 
 @respx.mock
-def test_run_all_returns_five_results(tmp_path):
+def test_run_all_returns_six_results(tmp_path):
     from pedalpoint.doctor import run_all
 
     respx.get("http://localhost:11434/v1/models").mock(
@@ -363,7 +366,7 @@ def test_run_all_returns_five_results(tmp_path):
         patch("pathlib.Path.home", return_value=tmp_path),
     ):
         results = run_all(BASE_CFG_WITH_KEY)
-    assert len(results) == 5
+    assert len(results) == 6
 
 
 @respx.mock
@@ -375,6 +378,7 @@ def test_run_all_uses_config_base_url(tmp_path):
     cfg = Config(
         base_url=custom_url,
         model="gemma4:12b",
+        backend="ollama",
         mode="hybrid",
         timeout=120.0,
         initial_fallback_minutes=60,
@@ -425,7 +429,7 @@ def test_run_all_defaults_to_get_config(monkeypatch, tmp_path):
     ):
         results = run_all()  # no cfg argument — exercises get_config() path
     get_config.cache_clear()
-    assert len(results) == 5
+    assert len(results) == 6
 
 
 # ---------------------------------------------------------------------------
@@ -514,3 +518,72 @@ def test_cli_no_subcommand_exits_0():
     ):
         main()
     assert exc_info.value.code == 0
+
+
+# ---------------------------------------------------------------------------
+# backend-aware checks
+# ---------------------------------------------------------------------------
+
+MLX_DOCTOR_CFG = dataclasses.replace(
+    BASE_CFG,
+    base_url="http://localhost:8080/v1",
+    model="mlx-community/gemma-4-e4b-it-4bit",
+    backend="mlx",
+)
+
+
+def test_check_backend_passes_for_known():
+    from pedalpoint.doctor import check_backend
+
+    for cfg in (BASE_CFG, MLX_DOCTOR_CFG):
+        result = check_backend(cfg)
+        assert result.status == "PASS"
+        assert result.message == f"Backend: {cfg.backend}"
+        assert result.fix is None
+
+
+def test_check_backend_fails_for_unknown():
+    from pedalpoint.doctor import check_backend
+
+    result = check_backend(dataclasses.replace(BASE_CFG, backend="lmstudio"))
+    assert result.status == "FAIL"
+    assert result.message == "Unknown backend 'lmstudio'"
+    assert result.fix == "export PEDALPOINT_BACKEND=mlx"
+
+
+def test_server_reachable_mlx_fail_uses_mlx_hint():
+    from pedalpoint.doctor import check_server_reachable
+
+    result = check_server_reachable(MLX_DOCTOR_CFG, None)
+    assert result.status == "FAIL"
+    assert "MLX not reachable" in result.message
+    assert result.fix == "mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit"
+
+
+def test_model_missing_mlx_fix_downloads_then_restarts():
+    from pedalpoint.doctor import check_model_available
+
+    response = httpx.Response(200, json={"data": [{"id": "other"}]})
+    result = check_model_available(MLX_DOCTOR_CFG, response)
+    assert result.status == "FAIL"
+    assert result.fix == (
+        "uvx --from huggingface_hub hf download mlx-community/gemma-4-e4b-it-4bit"
+        " then restart: mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit"
+    )
+
+
+def test_run_all_order(tmp_path):
+    from pedalpoint.doctor import run_all
+
+    with (
+        patch("pedalpoint.doctor._fetch_models", return_value=None),
+        patch("shutil.which", return_value="/usr/bin/pedalpoint-server"),
+        patch("pathlib.Path.home", return_value=tmp_path),
+    ):
+        results = run_all(BASE_CFG)
+    assert [r.message.split()[0] for r in results][:2] == [
+        "pedalpoint-server",
+        "Backend:",
+    ]
+    assert "not reachable" in results[2].message
+    assert results[3].message.startswith("Model")
