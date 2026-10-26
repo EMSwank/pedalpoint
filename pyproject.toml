@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pedalpoint"
-version = "0.3.0"
+version = "0.4.0"
 description = "MCP server that routes mechanical dev tasks to a local LLM"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,7 +34,7 @@ packages = ["src/pedalpoint"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 markers = [
-    "integration: requires live Ollama — set PEDALPOINT_INTEGRATION=true",
+    "integration: requires live Ollama or MLX — set PEDALPOINT_INTEGRATION=true",
 ]
 testpaths = ["tests"]
 

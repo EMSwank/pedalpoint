@@ -8,9 +8,11 @@ MCP server + companion superpowers skill. Two deliverables:
 
 ## Key Design Decisions
 
-- **Thin server, smart skill:** Server is a pure HTTP proxy. All routing logic lives in the skill. Server never touches `~/.pedalpoint/state.json`.
-- **Three-tier routing (junior/senior model):** Local LLM = junior dev, Agent = senior dev. Mechanical tasks go to local LLM directly. Structural tasks (framework-known patterns + spec-driven tasks) go to local LLM for a draft, then Agent reviews before commit (`.draft` lifecycle). Judgment tasks (architecture, debugging, security) go to Agent only.
-- **No streaming:** `local_llm` returns full string. Simpler, sufficient for code gen.
+- **Draft-writing server, smart skill:** All routing logic lives in the skill. The server reads context files and writes the model's output to `<target>.draft` — only `.draft` paths, only inside the git repo pinned at startup (toplevel of its cwd). Claude reviews the draft and promotes it with `mv`, never re-typing code (that re-typing was why handoffs cost more than they saved). Server never touches `~/.pedalpoint/state.json`.
+- **Backends:** `PEDALPOINT_BACKEND=mlx|ollama`. Both speak OpenAI `/v1/chat/completions`; backend only changes defaults, hint text, and the "thinking off" request field (`backends.py`).
+- **Three-tier routing (junior/senior model):** Local LLM = junior dev, Claude = senior dev. Mechanical and structural tasks get a local `.draft` that Claude reviews inline (no review subagent) and scores 1–7 via `record_outcome`. Judgment tasks (architecture, debugging, security) go to Agent only. Changes under ~30 lines skip the handoff.
+- **No streaming:** `local_llm` waits for the full completion. Simpler, sufficient for code gen.
+- **Savings metrics:** `pedalpoint stats` joins `~/.pedalpoint/handoffs.jsonl` with Claude Code transcripts (`~/.claude/projects/*/*.jsonl`, undocumented format — parse defensively) for real per-handoff Claude cost.
 - **Circuit breaker in skill:** Claude reads/writes state.json via Write tool. Python `circuit_breaker.py` module contains the pure functions that document and validate this logic.
 - **Context Courier:** Skill MUST grep codebase before sending any task to local LLM. Empty grep result = escalate to Agent.
 
@@ -33,7 +35,7 @@ Branch on everything, including README and CLAUDE.md changes.
 4. Run to confirm pass
 5. Commit
 
-Coverage requirements: circuit_breaker.py = 100%, error_classifier.py = 100%, server.py ≥ 90%
+Coverage requirements: circuit_breaker.py = 100%, error_classifier.py = 100%, paths.py / drafting.py / stats.py = 100%, server.py ≥ 90%
 
 ## Running Tests
 
@@ -41,9 +43,11 @@ Coverage requirements: circuit_breaker.py = 100%, error_classifier.py = 100%, se
 # Unit tests (fast, no Ollama needed)
 pytest tests/unit/ -v --cov=pedalpoint --cov-report=term-missing
 
-# Integration tests (requires Ollama running with gemma4:12b pulled)
-# CI pins gemma4:e4b instead (GPU-less runners); both work via PEDALPOINT_MODEL.
-PEDALPOINT_INTEGRATION=true pytest tests/integration/ -v
+# Integration tests — Ollama (gemma4:12b pulled; CI pins gemma4:e4b via PEDALPOINT_MODEL)
+PEDALPOINT_INTEGRATION=true PEDALPOINT_BACKEND=ollama pytest tests/integration/test_ollama.py -v
+
+# Integration tests — MLX (run: mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit)
+PEDALPOINT_INTEGRATION=true PEDALPOINT_BACKEND=mlx pytest tests/integration/test_mlx.py -v
 
 # All unit tests with coverage check
 pytest tests/unit/ --cov=pedalpoint --cov-fail-under=90
@@ -56,9 +60,16 @@ pytest tests/unit/ --cov=pedalpoint --cov-fail-under=90
 | `src/pedalpoint/config.py` | Load env vars into frozen Config dataclass |
 | `src/pedalpoint/error_classifier.py` | Regex classify error strings → error type |
 | `src/pedalpoint/circuit_breaker.py` | Pure fns for state transitions, expiry, backoff |
-| `src/pedalpoint/server.py` | FastMCP app, lifespan, `local_llm` tool, `_call_local_llm`, `claude_api` tool, `_call_claude_api` |
+| `src/pedalpoint/backends.py` | Per-backend labels, start/pull hints, thinking-off request fields |
+| `src/pedalpoint/paths.py` | Repo root discovery, path-in-repo enforcement, context specs, `.draft` paths |
+| `src/pedalpoint/drafting.py` | Prompt assembly, output cleanup (`<think>`, fences), change sizing |
+| `src/pedalpoint/handoff_log.py` | Append/read `~/.pedalpoint/handoffs.jsonl` |
+| `src/pedalpoint/server.py` | FastMCP app, lifespan, `_create_draft`, tools `local_llm` / `claude_api` / `record_outcome` / `local_llm_status` |
+| `src/pedalpoint/transcripts.py` | Per-handoff Claude token costs from Claude Code transcripts |
+| `src/pedalpoint/stats.py` | Net-savings math and the `pedalpoint stats` table |
+| `src/pedalpoint/doctor.py` / `cli.py` | `pedalpoint doctor`, `pedalpoint stats`, `--version` |
 | `skills/route-tasks/SKILL.md` | Claude instructions: routing, Context Courier, circuit breaker |
-| `install.sh` | Install pkg, pull model, register MCP config, copy skill |
+| `install.sh` | Install pkg, install mlx-lm + download model (mlx) or pull model (ollama), register MCP config, fetch skill pinned to the release tag |
 
 ## State File Format
 
@@ -77,12 +88,18 @@ pytest tests/unit/ --cov=pedalpoint --cov-fail-under=90
 
 CLOSED state: `{"circuit": "closed"}` or file absent.
 
+`~/.pedalpoint/handoffs.jsonl` (written by the server, one JSON object per line):
+- `{"kind": "call", "handoff_id", "ts", "repo", "backend", "model", "target", "draft_path", "lines", "lines_changed", "changed_tokens", "prompt_tokens", "completion_tokens", "seconds"}`
+- `{"kind": "outcome", "handoff_id", "ts", "score", "note"}`
+
 API_FALLBACK state: same schema as OPEN but `"circuit": "api_fallback"`. Judgment/structural tasks route to `claude_api`; mechanical tasks still use local_llm.
 
 ## Common Gotchas
 
 - `get_config()` uses `lru_cache`. Tests must call `get_config.cache_clear()` before and after monkeypatching env vars.
-- `_call_local_llm` is the testable core; `local_llm` (the MCP tool) just unwraps ctx and delegates to it.
+- `_create_draft` is the testable core shared by `local_llm` and `claude_api`; it takes a `generate(prompt, system) -> (text, prompt_tokens, completion_tokens)` callable.
+- Backend inference: `PEDALPOINT_BACKEND` wins; else a set `PEDALPOINT_BASE_URL` containing `:11434` → ollama, other URL → mlx; else `_platform_default_backend()` (mlx on macOS arm64). `tests/conftest.py` pins the platform to Linux so defaults are host-independent — tests needing mlx defaults monkeypatch `pedalpoint.config._platform_default_backend`.
+- `mlx_lm.server`'s `/v1/models` lists every model in the local HF cache, so doctor's "model available" means downloaded.
 - 402 errors trigger permanent fallback. 429 errors trigger retry-with-backoff only. Do not conflate them.
 - The companion skill has no Python backing. Skill tests are manual scenarios in `tests/skill/scenarios/`.
 - `ANTHROPIC_API_KEY` is optional at startup. If absent, `_call_claude_api` raises `ValueError("ANTHROPIC_API_KEY not set...")`. FastMCP stringifies it; the skill's error dispatch table matches on that text and writes OPEN state.
