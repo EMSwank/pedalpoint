@@ -1,5 +1,7 @@
 import dataclasses
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -208,6 +210,70 @@ async def test_claude_api_connection_error_raises_valueerror() -> None:
     with patch("pedalpoint.server.anthropic.AsyncAnthropic", return_value=mock_client):
         with pytest.raises(ValueError, match="Anthropic API not reachable"):
             await _call_claude_api("prompt", "system", TEST_CFG_WITH_KEY)
+
+
+# Real SDK against a local stub server: catches anthropic major-version breaks
+# that the patched-client tests above cannot. A socket server rather than respx
+# because anthropic 2.x uses httpx2, which respx does not intercept.
+@pytest.fixture
+def anthropic_stub(monkeypatch: pytest.MonkeyPatch):
+    seen: dict = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers["content-length"])
+            seen["body"] = json.loads(self.rfile.read(length))
+            # anthropic 0.x sends x-api-key; 2.x sends a bearer token
+            auth = self.headers["authorization"] or ""
+            seen["api_key"] = self.headers["x-api-key"] or auth.removeprefix("Bearer ")
+            status, payload = seen["reply"]
+            data = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", f"http://127.0.0.1:{server.server_port}")
+    yield seen
+    server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_claude_api_real_sdk_parses_response(anthropic_stub: dict) -> None:
+    anthropic_stub["reply"] = (
+        200,
+        {
+            "id": "msg_1",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-4-6",
+            "content": [{"type": "text", "text": "def foo(): pass"}],
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+            "usage": {"input_tokens": 3, "output_tokens": 4},
+        },
+    )
+    result = await _call_claude_api("write foo", "be terse", TEST_CFG_WITH_KEY)
+    assert result == ("def foo(): pass", 3, 4)
+    assert anthropic_stub["body"]["model"] == "claude-sonnet-4-6"
+    assert anthropic_stub["body"]["system"] == "be terse"
+    assert anthropic_stub["api_key"] == "sk-ant-test"
+
+
+@pytest.mark.asyncio
+async def test_claude_api_real_sdk_402_message(anthropic_stub: dict) -> None:
+    anthropic_stub["reply"] = (
+        402,
+        {"type": "error", "error": {"type": "billing_error", "message": "x"}},
+    )
+    with pytest.raises(ValueError, match=r"^HTTP 402"):
+        await _call_claude_api("prompt", "system", TEST_CFG_WITH_KEY)
 
 
 def _make_ctx(cfg: Config, http_client: object = None) -> MagicMock:
