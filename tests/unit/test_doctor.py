@@ -15,6 +15,7 @@ from pedalpoint.config import Config, get_config
 BASE_CFG = Config(
     base_url="http://localhost:11434/v1",
     model="gemma4:12b",
+    backend="ollama",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -26,6 +27,7 @@ BASE_CFG = Config(
 BASE_CFG_WITH_KEY = Config(
     base_url="http://localhost:11434/v1",
     model="gemma4:12b",
+    backend="ollama",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -375,6 +377,7 @@ def test_run_all_uses_config_base_url(tmp_path):
     cfg = Config(
         base_url=custom_url,
         model="gemma4:12b",
+        backend="ollama",
         mode="hybrid",
         timeout=120.0,
         initial_fallback_minutes=60,

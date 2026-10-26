@@ -3,8 +3,25 @@ import pytest
 from pedalpoint.config import get_config
 
 
-def test_defaults(monkeypatch):
+def _clear_env(monkeypatch):
     for key in [
+        "PEDALPOINT_BACKEND",
+        "PEDALPOINT_BASE_URL",
+        "PEDALPOINT_MODEL",
+        "PEDALPOINT_MODE",
+        "PEDALPOINT_TIMEOUT",
+        "PEDALPOINT_INITIAL_FALLBACK_MINUTES",
+        "PEDALPOINT_CONTEXT_LIMIT",
+        "PEDALPOINT_API_MODEL",
+        "ANTHROPIC_API_KEY",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_defaults_ollama(monkeypatch):
+    monkeypatch.setattr("pedalpoint.config._platform_default_backend", lambda: "ollama")
+    for key in [
+        "PEDALPOINT_BACKEND",
         "PEDALPOINT_BASE_URL",
         "PEDALPOINT_MODEL",
         "PEDALPOINT_MODE",
@@ -17,6 +34,7 @@ def test_defaults(monkeypatch):
         monkeypatch.delenv(key, raising=False)
     get_config.cache_clear()
     cfg = get_config()
+    assert cfg.backend == "ollama"
     assert cfg.base_url == "http://localhost:11434/v1"
     assert cfg.model == "gemma4:12b"
     assert cfg.mode == "hybrid"
@@ -97,3 +115,57 @@ def test_api_key_set(monkeypatch):
     get_config.cache_clear()
     assert get_config().api_key == "sk-ant-test"
     get_config.cache_clear()
+
+
+def test_defaults_mlx(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setattr("pedalpoint.config._platform_default_backend", lambda: "mlx")
+    get_config.cache_clear()
+    cfg = get_config()
+    assert cfg.backend == "mlx"
+    assert cfg.base_url == "http://localhost:8080/v1"
+    assert cfg.model == "mlx-community/gemma-4-e4b-it-4bit"
+    get_config.cache_clear()
+
+
+def test_backend_inferred_from_ollama_url(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setattr("pedalpoint.config._platform_default_backend", lambda: "mlx")
+    monkeypatch.setenv("PEDALPOINT_BASE_URL", "http://localhost:11434/v1")
+    get_config.cache_clear()
+    cfg = get_config()
+    assert cfg.backend == "ollama"
+    assert cfg.model == "gemma4:12b"
+    get_config.cache_clear()
+
+
+def test_backend_inferred_from_other_url(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setattr("pedalpoint.config._platform_default_backend", lambda: "ollama")
+    monkeypatch.setenv("PEDALPOINT_BASE_URL", "http://localhost:9000/v1")
+    get_config.cache_clear()
+    assert get_config().backend == "mlx"
+    get_config.cache_clear()
+
+
+def test_explicit_backend_wins(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("PEDALPOINT_BACKEND", "ollama")
+    monkeypatch.setenv("PEDALPOINT_BASE_URL", "http://localhost:8080/v1")
+    get_config.cache_clear()
+    cfg = get_config()
+    assert cfg.backend == "ollama"
+    assert cfg.base_url == "http://localhost:8080/v1"
+    get_config.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "system,machine,expected",
+    [("Darwin", "arm64", "mlx"), ("Linux", "x86_64", "ollama"), ("Darwin", "x86_64", "ollama")],
+)
+def test_platform_default(monkeypatch, system, machine, expected):
+    from pedalpoint.config import _platform_default_backend
+
+    monkeypatch.setattr("platform.system", lambda: system)
+    monkeypatch.setattr("platform.machine", lambda: machine)
+    assert _platform_default_backend() == expected

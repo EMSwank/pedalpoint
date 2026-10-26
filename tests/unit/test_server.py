@@ -19,6 +19,7 @@ def test_local_llm_ctx_typed_as_context() -> None:
 TEST_CFG = Config(
     base_url="http://localhost:11434/v1",
     model="gemma4:12b",
+    backend="ollama",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
@@ -30,6 +31,7 @@ TEST_CFG = Config(
 TEST_CFG_WITH_KEY = Config(
     base_url="http://localhost:11434/v1",
     model="gemma4:12b",
+    backend="ollama",
     mode="hybrid",
     timeout=120.0,
     initial_fallback_minutes=60,
