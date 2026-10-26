@@ -14,7 +14,7 @@ INTEGRATION = os.getenv("PEDALPOINT_INTEGRATION", "").lower() in {"1", "true", "
 async def test_live_ollama_returns_nonempty_string() -> None:
     cfg = get_config()
     async with httpx.AsyncClient(base_url=cfg.base_url, timeout=cfg.timeout) as client:
-        result = await _call_local_llm(client, "Say hello", None, cfg.model, cfg)
+        result, _ = await _call_local_llm(client, "Say hello", None, cfg.model, cfg)
     assert isinstance(result, str)
     assert len(result) > 0
 
@@ -24,7 +24,7 @@ async def test_live_ollama_returns_nonempty_string() -> None:
 async def test_live_ollama_system_prompt_respected() -> None:
     cfg = get_config()
     async with httpx.AsyncClient(base_url=cfg.base_url, timeout=cfg.timeout) as client:
-        result = await _call_local_llm(
+        result, _ = await _call_local_llm(
             client, "What is 2+2?", "Reply with only the number.", cfg.model, cfg
         )
     assert isinstance(result, str)

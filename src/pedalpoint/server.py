@@ -1,10 +1,18 @@
+import json
 import logging
+import time
+import uuid
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import anthropic
 import httpx
 from mcp.server.fastmcp import Context, FastMCP
 
+from . import backends, drafting, handoff_log, paths
 from .config import Config, get_config
 
 logger = logging.getLogger(__name__)
@@ -21,11 +29,16 @@ async def lifespan(app):  # type: ignore[type-arg]
             await client.get("/models", timeout=5.0)
         except (httpx.ConnectError, httpx.TimeoutException):
             logger.warning(
-                "⚠ Ollama unreachable at %s. Run `ollama serve` or open "
-                "Ollama.app. local_llm calls will fail until Ollama is running.",
+                f"⚠ {backends.label(cfg)} unreachable at %s. Start it with: %s. "
+                "local_llm calls will fail until it is running.",
                 cfg.base_url,
+                backends.start_hint(cfg),
             )
-        yield {"http": client, "cfg": cfg}
+        yield {
+            "http": client,
+            "cfg": cfg,
+            "repo_root": paths.find_repo_root(Path.cwd()),
+        }
 
 
 mcp = FastMCP("pedalpoint", lifespan=lifespan)
@@ -37,7 +50,7 @@ async def _call_local_llm(
     system: str | None,
     model: str,
     cfg: Config,
-) -> str:
+) -> tuple[str, dict]:
     messages: list[dict[str, str]] = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -46,13 +59,15 @@ async def _call_local_llm(
     try:
         resp = await client.post(
             "/chat/completions",
-            json={"model": model, "messages": messages},
+            json={"model": model, "messages": messages} | backends.extra_body(cfg),
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        body = resp.json()
+        return body["choices"][0]["message"]["content"], body.get("usage") or {}
     except httpx.ConnectError:
         raise ValueError(
-            f"Ollama not reachable at {cfg.base_url} — is it running?"
+            f"{backends.label(cfg)} not reachable at {cfg.base_url} — is it running? "
+            f"Start: {backends.start_hint(cfg)}"
         ) from None
     except httpx.TimeoutException:
         raise ValueError(
@@ -61,11 +76,106 @@ async def _call_local_llm(
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
             raise ValueError(
-                f"Model `{model}` not found — run: ollama pull {model}"
+                f"Model `{model}` not found — run: {backends.pull_hint(cfg, model)}"
             ) from exc
         raise ValueError(
             f"HTTP {exc.response.status_code}: {exc.response.text}"
         ) from exc
+
+
+Generate = Callable[[str, str], Awaitable[tuple[str, int, int]]]
+
+DEFAULT_SYSTEM = (
+    "You are a code generator. Follow the provided patterns exactly. "
+    "Output only code. No explanation."
+)
+
+
+def _server_version() -> str:
+    try:
+        return version("pedalpoint")
+    except PackageNotFoundError:  # pragma: no cover - only when run from source
+        return "unknown"
+
+
+def _read_context(spec: str, root: Path) -> tuple[str, str]:
+    raw, first, last = paths.parse_context_spec(spec)
+    text = paths.resolve_in_repo(raw, root).read_text()
+    if first is None:
+        return raw, text
+    lines = text.splitlines()[first - 1 : last]
+    return f"{raw} lines {first}-{last}", "\n".join(lines)
+
+
+async def _create_draft(
+    generate: Generate,
+    *,
+    task: str,
+    target_path: str,
+    context_paths: list[str],
+    system: str,
+    repo_root: Path | None,
+    backend: str,
+    model: str,
+    cfg: Config,
+) -> dict:
+    """Generate code for `target_path` and write it to `<target_path>.draft`."""
+    if repo_root is None:
+        raise ValueError("Not in a git repository — local_llm needs a project repo")
+    target = paths.resolve_in_repo(target_path, repo_root)
+    context = [_read_context(spec, repo_root) for spec in context_paths]
+    existing = target.read_text() if target.exists() else None
+    if existing is not None:
+        n = len(existing.splitlines())
+        if n > drafting.MAX_EDIT_LINES:
+            raise ValueError(
+                f"Target has {n} lines (> {drafting.MAX_EDIT_LINES}) — too large "
+                "for local regeneration; edit directly"
+            )
+    target_rel = str(target.relative_to(repo_root.resolve()))
+    prompt = drafting.build_prompt(task, context, target_rel, existing)
+    n_tokens = drafting.estimate_tokens(prompt)
+    if n_tokens > cfg.context_limit:
+        raise ValueError(
+            f"Context too large: ~{n_tokens} tokens > limit {cfg.context_limit} "
+            "— escalate to Agent"
+        )
+
+    started = time.monotonic()
+    text, prompt_tokens, completion_tokens = await generate(prompt, system)
+    seconds = round(time.monotonic() - started, 1)
+    code = drafting.strip_output(text)
+    if not code:
+        raise ValueError("Model returned empty output")
+
+    draft = paths.draft_path_for(target)
+    draft.parent.mkdir(parents=True, exist_ok=True)
+    draft.write_text(code)
+    lines_changed, changed_tokens = drafting.change_size(existing, code)
+
+    result = {
+        "handoff_id": uuid.uuid4().hex[:12],
+        "draft_path": str(draft),
+        "lines": len(code.splitlines()),
+        "lines_changed": lines_changed,
+        "changed_tokens": changed_tokens,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "seconds": seconds,
+        "model": model,
+        "backend": backend,
+        "server_version": _server_version(),
+    }
+    handoff_log.append(
+        {
+            "kind": "call",
+            "ts": datetime.now(UTC).isoformat(),
+            "repo": str(repo_root),
+            "target": target_rel,
+            **{k: v for k, v in result.items() if k != "server_version"},
+        }
+    )
+    return result
 
 
 async def _call_claude_api(prompt: str, system: str, cfg: Config) -> str:
@@ -109,13 +219,42 @@ async def claude_api(
 @mcp.tool()
 async def local_llm(
     ctx: Context,
-    prompt: str,
+    task: str,
+    target_path: str,
+    context_paths: list[str] | None = None,
     system: str | None = None,
     model: str | None = None,
 ) -> str:
-    client: httpx.AsyncClient = ctx.request_context.lifespan_context["http"]
-    cfg: Config = ctx.request_context.lifespan_context["cfg"]
-    return await _call_local_llm(client, prompt, system, model or cfg.model, cfg)
+    """Draft `target_path` with the local model; writes `<target_path>.draft`.
+
+    Pass context as file paths ("path" or "path:START-END"), not pasted code.
+    Returns a JSON summary including `handoff_id` for `record_outcome`.
+    """
+    lifespan_ctx = ctx.request_context.lifespan_context
+    client: httpx.AsyncClient = lifespan_ctx["http"]
+    cfg: Config = lifespan_ctx["cfg"]
+    chosen = model or cfg.model
+
+    async def generate(prompt: str, sys_prompt: str) -> tuple[str, int, int]:
+        text, usage = await _call_local_llm(client, prompt, sys_prompt, chosen, cfg)
+        return (
+            text,
+            usage.get("prompt_tokens", 0),
+            usage.get("completion_tokens", 0),
+        )
+
+    result = await _create_draft(
+        generate,
+        task=task,
+        target_path=target_path,
+        context_paths=context_paths or [],
+        system=system or DEFAULT_SYSTEM,
+        repo_root=lifespan_ctx.get("repo_root"),
+        backend=cfg.backend,
+        model=chosen,
+        cfg=cfg,
+    )
+    return json.dumps(result)
 
 
 def main() -> None:
