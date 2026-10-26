@@ -1,4 +1,3 @@
-
 """Unit tests for pedalpoint.doctor — run before implementing doctor.py."""
 
 import dataclasses
