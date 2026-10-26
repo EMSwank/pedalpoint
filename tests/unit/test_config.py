@@ -161,7 +161,11 @@ def test_explicit_backend_wins(monkeypatch):
 
 @pytest.mark.parametrize(
     "system,machine,expected",
-    [("Darwin", "arm64", "mlx"), ("Linux", "x86_64", "ollama"), ("Darwin", "x86_64", "ollama")],
+    [
+        ("Darwin", "arm64", "mlx"),
+        ("Linux", "x86_64", "ollama"),
+        ("Darwin", "x86_64", "ollama"),
+    ],
 )
 def test_platform_default(monkeypatch, system, machine, expected):
     from pedalpoint.config import _platform_default_backend
