@@ -178,7 +178,9 @@ async def _create_draft(
     return result
 
 
-async def _call_claude_api(prompt: str, system: str, cfg: Config) -> str:
+async def _call_claude_api(
+    prompt: str, system: str, cfg: Config
+) -> tuple[str, int, int]:
     if not cfg.api_key:
         raise ValueError(
             "ANTHROPIC_API_KEY not set. Add it to your environment: "
@@ -192,7 +194,11 @@ async def _call_claude_api(prompt: str, system: str, cfg: Config) -> str:
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
-        return message.content[0].text
+        return (
+            message.content[0].text,
+            message.usage.input_tokens,
+            message.usage.output_tokens,
+        )
     except anthropic.APIStatusError as exc:
         raise ValueError(f"HTTP {exc.status_code}: {exc}") from exc
     except anthropic.APIConnectionError:
@@ -204,15 +210,75 @@ async def _call_claude_api(prompt: str, system: str, cfg: Config) -> str:
 @mcp.tool()
 async def claude_api(
     ctx: Context,
-    prompt: str,
+    task: str,
+    target_path: str,
+    context_paths: list[str] | None = None,
     system: str = "",
 ) -> str:
-    """Call Claude API directly. Use when circuit is api_fallback."""
-    cfg: Config = ctx.request_context.lifespan_context["cfg"]
-    return await _call_claude_api(
-        prompt,
-        system or "You are a code generator. Output only code. No explanation.",
-        cfg,
+    """Draft `target_path` with the Claude API. Use when circuit is api_fallback.
+
+    Same contract as `local_llm`: writes `<target_path>.draft`, returns JSON.
+    """
+    lifespan_ctx = ctx.request_context.lifespan_context
+    cfg: Config = lifespan_ctx["cfg"]
+
+    async def generate(prompt: str, sys_prompt: str) -> tuple[str, int, int]:
+        return await _call_claude_api(prompt, sys_prompt, cfg)
+
+    result = await _create_draft(
+        generate,
+        task=task,
+        target_path=target_path,
+        context_paths=context_paths or [],
+        system=system or DEFAULT_SYSTEM,
+        repo_root=lifespan_ctx.get("repo_root"),
+        backend="claude_api",
+        model=cfg.api_model,
+        cfg=cfg,
+    )
+    return json.dumps(result)
+
+
+@mcp.tool()
+async def record_outcome(
+    ctx: Context, handoff_id: str, score: int, note: str = ""
+) -> str:
+    """Record what Claude had to do with a draft, 1-7 (7 = accepted as-is)."""
+    if not 1 <= score <= 7:
+        raise ValueError("score must be 1-7")
+    handoff_log.append(
+        {
+            "kind": "outcome",
+            "handoff_id": handoff_id,
+            "ts": datetime.now(UTC).isoformat(),
+            "score": score,
+            "note": note,
+        }
+    )
+    return "recorded"
+
+
+@mcp.tool()
+async def local_llm_status(ctx: Context) -> str:
+    """Report backend, model, reachability, pinned repo and server version."""
+    lifespan_ctx = ctx.request_context.lifespan_context
+    client: httpx.AsyncClient = lifespan_ctx["http"]
+    cfg: Config = lifespan_ctx["cfg"]
+    try:
+        resp = await client.get("/models", timeout=5.0)
+        reachable = resp.status_code == 200
+    except httpx.HTTPError:
+        reachable = False
+    repo_root = lifespan_ctx.get("repo_root")
+    return json.dumps(
+        {
+            "backend": cfg.backend,
+            "model": cfg.model,
+            "base_url": cfg.base_url,
+            "reachable": reachable,
+            "repo_root": str(repo_root) if repo_root else None,
+            "server_version": _server_version(),
+        }
     )
 
 

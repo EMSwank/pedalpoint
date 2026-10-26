@@ -159,11 +159,13 @@ async def test_claude_api_no_key_raises_value_error() -> None:
 async def test_claude_api_success_returns_text() -> None:
     mock_msg = MagicMock()
     mock_msg.content = [MagicMock(text="def foo(): pass")]
+    mock_msg.usage.input_tokens = 3
+    mock_msg.usage.output_tokens = 4
     mock_client = MagicMock()
     mock_client.messages.create = AsyncMock(return_value=mock_msg)
     with patch("pedalpoint.server.anthropic.AsyncAnthropic", return_value=mock_client):
         result = await _call_claude_api("write foo", "be terse", TEST_CFG_WITH_KEY)
-    assert result == "def foo(): pass"
+    assert result == ("def foo(): pass", 3, 4)
 
 
 @pytest.mark.asyncio
@@ -215,32 +217,6 @@ def _make_ctx(cfg: Config, http_client: object = None) -> MagicMock:
         lifespan_ctx["http"] = http_client
     ctx.request_context.lifespan_context = lifespan_ctx
     return ctx
-
-
-@pytest.mark.asyncio
-async def test_claude_api_tool_delegates_to_call_claude_api() -> None:
-    from pedalpoint.server import claude_api
-
-    ctx = _make_ctx(TEST_CFG_WITH_KEY)
-    with patch(
-        "pedalpoint.server._call_claude_api", new=AsyncMock(return_value="result text")
-    ) as mock_fn:
-        result = await claude_api(ctx, "hello", "be concise")
-    mock_fn.assert_awaited_once_with("hello", "be concise", TEST_CFG_WITH_KEY)
-    assert result == "result text"
-
-
-@pytest.mark.asyncio
-async def test_claude_api_tool_uses_default_system_when_empty() -> None:
-    from pedalpoint.server import claude_api
-
-    ctx = _make_ctx(TEST_CFG_WITH_KEY)
-    with patch(
-        "pedalpoint.server._call_claude_api", new=AsyncMock(return_value="ok")
-    ) as mock_fn:
-        await claude_api(ctx, "hello", "")
-    call_args = mock_fn.call_args
-    assert "code generator" in call_args.args[1]
 
 
 # ── lifespan ──────────────────────────────────────────────────────────────────
@@ -545,3 +521,83 @@ async def test_lifespan_pins_repo_root(monkeypatch, repo: Path) -> None:
     async with lifespan(None) as ctx:
         assert ctx["repo_root"] == repo
     get_config.cache_clear()
+
+
+# ── claude_api drafts, record_outcome, local_llm_status ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_claude_api_writes_draft(repo: Path) -> None:
+    from pedalpoint.server import claude_api
+
+    ctx = _make_ctx(TEST_CFG_WITH_KEY)
+    ctx.request_context.lifespan_context["repo_root"] = repo
+    with patch(
+        "pedalpoint.server._call_claude_api",
+        new=AsyncMock(return_value=("x = 1\n", 9, 8)),
+    ) as mock_fn:
+        result = json.loads(await claude_api(ctx, "write x", "src/x.py"))
+    assert result["backend"] == "claude_api"
+    assert result["model"] == "claude-sonnet-4-6"
+    assert result["completion_tokens"] == 8
+    assert (repo / "src" / "x.py.draft").read_text() == "x = 1\n"
+    assert "code generator" in mock_fn.call_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_record_outcome_appends(repo: Path) -> None:
+    from pedalpoint.server import record_outcome
+
+    ctx = _make_ctx(TEST_CFG)
+    assert await record_outcome(ctx, "abc123", 6, "fixed import") == "recorded"
+    records = _log_records(repo)
+    assert records[-1]["kind"] == "outcome"
+    assert records[-1]["handoff_id"] == "abc123"
+    assert records[-1]["score"] == 6
+    assert records[-1]["note"] == "fixed import"
+    assert "ts" in records[-1]
+
+
+@pytest.mark.parametrize("score", [0, 8])
+@pytest.mark.asyncio
+async def test_record_outcome_rejects_out_of_range(repo: Path, score: int) -> None:
+    from pedalpoint.server import record_outcome
+
+    with pytest.raises(ValueError, match="score must be 1-7"):
+        await record_outcome(_make_ctx(TEST_CFG), "abc", score)
+    assert _log_records(repo) == []
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_local_llm_status_reachable(repo: Path) -> None:
+    from pedalpoint.server import local_llm_status
+
+    respx.get("http://localhost:11434/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+    async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
+        ctx = _make_ctx(TEST_CFG, http_client=client)
+        ctx.request_context.lifespan_context["repo_root"] = repo
+        status = json.loads(await local_llm_status(ctx))
+    assert status["reachable"] is True
+    assert status["backend"] == "ollama"
+    assert status["model"] == "gemma4:12b"
+    assert status["base_url"] == "http://localhost:11434/v1"
+    assert status["repo_root"] == str(repo)
+    assert status["server_version"]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_local_llm_status_unreachable() -> None:
+    from pedalpoint.server import local_llm_status
+
+    respx.get("http://localhost:11434/v1/models").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
+        ctx = _make_ctx(TEST_CFG, http_client=client)
+        status = json.loads(await local_llm_status(ctx))
+    assert status["reachable"] is False
+    assert status["repo_root"] is None
