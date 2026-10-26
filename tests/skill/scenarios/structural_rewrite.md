@@ -1,4 +1,4 @@
-# Scenario: Structural Path — Agent Rewrites Draft
+# Scenario: Structural Path — Claude Rewrites Most of the Draft (score 3)
 
 ## Setup
 - Project has `src/api/users.py` with existing FastAPI routes using dependency injection
@@ -10,16 +10,14 @@
 
 ## Expected Behavior
 1. Classified as structural (FastAPI route — framework-known)
-2. Courier greps for `APIRouter`, finds users.py, extracts style excerpt
-3. local_llm returns route code that ignores existing dependency injection pattern
-4. Code written to `src/api/posts.py.draft`
-5. Agent review spawned — draft is significantly wrong (missing db dependency, wrong return type)
-6. Agent outputs REWRITE and produces corrected version using project's dependency pattern
-7. Agent's rewrite is written to `src/api/posts.py.draft`, replacing the local_llm output
-8. Skill renames draft → `src/api/posts.py`
-9. pytest passes, committed
+2. Courier greps for `APIRouter`, finds users.py, passes a line range in `context_paths`
+3. `local_llm` writes `src/api/posts.py.draft` that ignores the dependency injection pattern
+4. Claude Reads the draft — significantly wrong (missing db dependency, wrong return type)
+5. Claude rewrites most of the draft (Write/Edit on the `.draft`) using the project's dependency pattern
+6. `mv` draft → `src/api/posts.py`; pytest passes
+7. `record_outcome(handoff_id, 3, "rewrote handler: missing get_db dependency")`; commit
 
 ## Verification
-- Agent output was REWRITE
-- .draft was overwritten before rename
+- No review Agent spawned
+- `record_outcome` score is 3 (rewrote most)
 - Final committed code uses project's dependency injection pattern

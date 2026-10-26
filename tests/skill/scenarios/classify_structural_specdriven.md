@@ -17,14 +17,12 @@ structural (spec-driven: field names, types, and behavior fully spelled out)
 2. Step 3 Context Courier runs:
    - Greps for `BaseModel` in project
    - Grep returns empty
-   - Task is spec-driven only (not framework-known) → checks: is grep empty AND not framework-known?
-   - `BaseModel` (Pydantic) IS framework-known → proceeds with framework defaults note
-3. Skill calls local_llm with augmented prompt
-4. Writes to `src/schemas/user.py.draft`
-5. Agent reviews draft
-6. Renames, runs pytest, commits
+   - `BaseModel` (Pydantic) IS framework-known → proceeds with framework defaults note in `task`
+3. Skill calls `local_llm(task=<spec details + note>, target_path="src/schemas/user.py", context_paths=[])`
+4. Server writes `src/schemas/user.py.draft`; Claude Reads it and reviews inline
+5. `mv` draft → `src/schemas/user.py`, pytest, `record_outcome`, commit
 
 ## Verification
 - Classified as structural (not judgment)
-- local_llm called with spec details in prompt
-- .draft lifecycle used
+- `task` carries the spec details; no pasted code
+- `.draft` lifecycle used; no review Agent spawned
