@@ -173,3 +173,14 @@ def test_platform_default(monkeypatch, system, machine, expected):
     monkeypatch.setattr("platform.system", lambda: system)
     monkeypatch.setattr("platform.machine", lambda: machine)
     assert _platform_default_backend() == expected
+
+
+def test_max_tokens_default_and_env(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.delenv("PEDALPOINT_MAX_TOKENS", raising=False)
+    get_config.cache_clear()
+    assert get_config().max_tokens == 8192
+    monkeypatch.setenv("PEDALPOINT_MAX_TOKENS", "4096")
+    get_config.cache_clear()
+    assert get_config().max_tokens == 4096
+    get_config.cache_clear()

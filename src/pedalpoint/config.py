@@ -20,6 +20,7 @@ class Config:
     context_limit: int
     api_model: str
     api_key: str | None
+    max_tokens: int = 8192
 
 
 def _platform_default_backend() -> str:
@@ -54,4 +55,5 @@ def get_config() -> Config:
         context_limit=int(os.getenv("PEDALPOINT_CONTEXT_LIMIT", "16000")),
         api_model=os.getenv("PEDALPOINT_API_MODEL", "claude-sonnet-4-6"),
         api_key=os.getenv("ANTHROPIC_API_KEY"),
+        max_tokens=int(os.getenv("PEDALPOINT_MAX_TOKENS", "8192")),
     )

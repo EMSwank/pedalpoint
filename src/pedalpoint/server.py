@@ -59,11 +59,18 @@ async def _call_local_llm(
     try:
         resp = await client.post(
             "/chat/completions",
-            json={"model": model, "messages": messages} | backends.extra_body(cfg),
+            json={"model": model, "messages": messages, "max_tokens": cfg.max_tokens}
+            | backends.extra_body(cfg),
         )
         resp.raise_for_status()
         body = resp.json()
-        return body["choices"][0]["message"]["content"], body.get("usage") or {}
+        choice = body["choices"][0]
+        if choice.get("finish_reason") == "length":
+            raise ValueError(
+                f"Model output truncated (max_tokens={cfg.max_tokens}) — "
+                "raise PEDALPOINT_MAX_TOKENS or split the task"
+            )
+        return choice["message"]["content"], body.get("usage") or {}
     except httpx.ConnectError:
         raise ValueError(
             f"{backends.label(cfg)} not reachable at {cfg.base_url} — is it running? "

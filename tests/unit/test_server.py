@@ -626,3 +626,27 @@ async def test_create_draft_rejects_directory_target(repo: Path, target: str) ->
     with pytest.raises(ValueError, match="must be a file"):
         await _draft(repo, "x = 1\n", target_path=target)
     assert not (repo.parent / "repo.draft").exists()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_call_local_llm_sends_max_tokens() -> None:
+    route = respx.post(MLX_URL).mock(
+        return_value=httpx.Response(200, json=MOCK_RESPONSE)
+    )
+    async with httpx.AsyncClient(base_url=MLX_CFG.base_url) as client:
+        await _call_local_llm(client, "p", None, MLX_CFG.model, MLX_CFG)
+    payload = json.loads(route.calls[0].request.content)
+    assert payload["max_tokens"] == 8192
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_call_local_llm_truncated_output_raises() -> None:
+    truncated = {
+        "choices": [{"message": {"content": "def f(:"}, "finish_reason": "length"}]
+    }
+    respx.post(MLX_URL).mock(return_value=httpx.Response(200, json=truncated))
+    async with httpx.AsyncClient(base_url=MLX_CFG.base_url) as client:
+        with pytest.raises(ValueError, match=r"Model output truncated \(max_tokens"):
+            await _call_local_llm(client, "p", None, MLX_CFG.model, MLX_CFG)
