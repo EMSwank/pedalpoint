@@ -650,3 +650,25 @@ async def test_call_local_llm_truncated_output_raises() -> None:
     async with httpx.AsyncClient(base_url=MLX_CFG.base_url) as client:
         with pytest.raises(ValueError, match=r"Model output truncated \(max_tokens"):
             await _call_local_llm(client, "p", None, MLX_CFG.model, MLX_CFG)
+
+
+@pytest.mark.asyncio
+async def test_create_draft_markdown_keeps_inner_fences(repo: Path) -> None:
+    text = "# Title\n\n```bash\npip install x\n```\n\nMore docs"
+    await _draft(repo, text, target_path="README.md")
+    assert (repo / "README.md.draft").read_text() == text + "\n"
+
+
+@pytest.mark.asyncio
+async def test_create_draft_prose_only_python_raises(repo: Path) -> None:
+    with pytest.raises(ValueError, match="Model returned empty output"):
+        await _draft(repo, "I'm sorry, I can't help with that request.")
+    assert not (repo / "src" / "new.py.draft").exists()
+
+
+@pytest.mark.asyncio
+async def test_create_draft_fenced_python_with_syntax_error_still_written(
+    repo: Path,
+) -> None:
+    await _draft(repo, "```python\ndef f(:\n    pass\n```")
+    assert (repo / "src" / "new.py.draft").read_text() == "def f(:\n    pass\n"

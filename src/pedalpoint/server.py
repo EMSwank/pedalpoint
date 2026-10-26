@@ -1,3 +1,4 @@
+import ast
 import json
 import logging
 import time
@@ -114,6 +115,17 @@ def _read_context(spec: str, root: Path) -> tuple[str, str]:
     return f"{raw} lines {first}-{last}", "\n".join(lines)
 
 
+def _is_unfenced_non_python(target: Path, raw: str, code: str) -> bool:
+    """Prose-only replies ("I'm sorry, ...") to a .py target are not drafts."""
+    if target.suffix != ".py" or "```" in raw:
+        return False
+    try:
+        ast.parse(code)
+    except SyntaxError:
+        return True
+    return False
+
+
 async def _create_draft(
     generate: Generate,
     *,
@@ -155,8 +167,8 @@ async def _create_draft(
     started = time.monotonic()
     text, prompt_tokens, completion_tokens = await generate(prompt, system)
     seconds = round(time.monotonic() - started, 1)
-    code = drafting.strip_output(text)
-    if not code:
+    code = drafting.strip_output(text, drafting.is_prose_target(target_rel))
+    if not code or _is_unfenced_non_python(target, text, code):
         raise ValueError("Model returned empty output")
 
     draft = paths.draft_path_for(target)

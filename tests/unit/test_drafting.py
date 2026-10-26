@@ -74,3 +74,20 @@ def test_change_size_replaced_line_counts() -> None:
 
 def test_change_size_identical() -> None:
     assert change_size("a\nb\n", "a\nb\n") == (0, 0)
+
+
+def test_strip_output_prose_target_keeps_inner_fences() -> None:
+    text = "# Title\n\n```bash\npip install x\n```\n\nMore docs"
+    assert strip_output(text, prose_target=True) == text + "\n"
+
+
+def test_strip_output_prose_target_unwraps_outer_fence_only() -> None:
+    text = "```markdown\n# T\n```bash\nx\n```\nmore\n```"
+    assert strip_output(text, prose_target=True) == "# T\n```bash\nx\n```\nmore\n"
+
+
+def test_is_prose_target() -> None:
+    from pedalpoint.drafting import is_prose_target
+
+    assert is_prose_target("README.md") and is_prose_target("docs/x.rst")
+    assert not is_prose_target("src/a.py")
