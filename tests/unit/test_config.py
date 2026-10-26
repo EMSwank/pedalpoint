@@ -184,3 +184,25 @@ def test_max_tokens_default_and_env(monkeypatch):
     get_config.cache_clear()
     assert get_config().max_tokens == 4096
     get_config.cache_clear()
+
+
+def test_backend_from_state_file(monkeypatch, tmp_path):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".pedalpoint").mkdir()
+    (tmp_path / ".pedalpoint" / "backend").write_text("ollama\n")
+    monkeypatch.setattr("pedalpoint.config._platform_default_backend", lambda: "mlx")
+    get_config.cache_clear()
+    assert get_config().backend == "ollama"
+    get_config.cache_clear()
+
+
+def test_env_base_url_beats_state_file(monkeypatch, tmp_path):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".pedalpoint").mkdir()
+    (tmp_path / ".pedalpoint" / "backend").write_text("ollama\n")
+    monkeypatch.setenv("PEDALPOINT_BASE_URL", "http://localhost:8080/v1")
+    get_config.cache_clear()
+    assert get_config().backend == "mlx"
+    get_config.cache_clear()

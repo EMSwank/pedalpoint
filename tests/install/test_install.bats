@@ -167,6 +167,40 @@ EOF
   grep -q "PEDALPOINT_BACKEND=ollama" "$HOME/.claude_args"
 }
 
+@test "re-run keeps backend saved in ~/.pedalpoint/backend" {
+  stub_platform Darwin arm64
+  mkdir -p "$HOME/.pedalpoint"
+  printf 'ollama\n' > "$HOME/.pedalpoint/backend"
+  run sh "$INSTALL_SH"
+  [ "$status" -eq 0 ]
+  grep -q "PEDALPOINT_BACKEND=ollama" "$HOME/.claude_args"
+}
+
+@test "re-run of a 0.3 Ollama install keeps ollama" {
+  stub_platform Darwin arm64
+  cat > "$STUB_DIR/claude" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HOME/.claude_args"
+if [ "$1 $2" = "mcp get" ]; then
+  printf '  Environment:\n    PEDALPOINT_BASE_URL=http://localhost:11434/v1\n'
+fi
+exit 0
+EOF
+  chmod +x "$STUB_DIR/claude"
+  run sh "$INSTALL_SH"
+  [ "$status" -eq 0 ]
+  grep -q "PEDALPOINT_BACKEND=ollama" "$HOME/.claude_args"
+}
+
+@test "--backend overrides saved backend and is saved" {
+  mkdir -p "$HOME/.pedalpoint"
+  printf 'ollama\n' > "$HOME/.pedalpoint/backend"
+  run sh "$INSTALL_SH" --backend mlx
+  [ "$status" -eq 0 ]
+  grep -q "PEDALPOINT_BACKEND=mlx" "$HOME/.claude_args"
+  [ "$(cat "$HOME/.pedalpoint/backend")" = "mlx" ]
+}
+
 @test "--model overrides backend default" {
   run sh "$INSTALL_SH" --backend mlx --model mlx-community/Qwen3.5-4B-MLX-4bit
   [ "$status" -eq 0 ]

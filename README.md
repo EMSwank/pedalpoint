@@ -74,11 +74,12 @@ Should show `Status: ✓ Connected`. If disconnected, run `pedalpoint-server` di
 
 | Variable | Default | Description |
 |---|---|---|
-| `PEDALPOINT_BACKEND` | `mlx` on Apple Silicon, else `ollama` | `mlx` or `ollama`. If unset but `PEDALPOINT_BASE_URL` is set, inferred from the URL (port 11434 → `ollama`). |
+| `PEDALPOINT_BACKEND` | saved choice, else `mlx` on Apple Silicon / `ollama` elsewhere | `mlx` or `ollama`. If unset but `PEDALPOINT_BASE_URL` is set, inferred from the URL (port 11434 → `ollama`). Otherwise read from `~/.pedalpoint/backend`, which `install.sh` writes; re-running the installer keeps it unless you pass `--backend`. |
 | `PEDALPOINT_BASE_URL` | mlx: `http://localhost:8080/v1`; ollama: `http://localhost:11434/v1` | OpenAI-compatible endpoint |
 | `PEDALPOINT_MODEL` | mlx: `mlx-community/gemma-4-e4b-it-4bit`; ollama: `gemma4:12b` | Local model. See [Choosing a model](#choosing-a-model). |
 | `PEDALPOINT_MODE` | `hybrid` | Routing mode |
 | `PEDALPOINT_TIMEOUT` | `120` | Read timeout in seconds |
+| `PEDALPOINT_MAX_TOKENS` | `8192` | Max tokens per draft. Sent on every request (`mlx_lm.server` defaults to 512). Truncated output is rejected, never written. |
 | `PEDALPOINT_INITIAL_FALLBACK_MINUTES` | `60` | Initial circuit-open duration (doubles on each probe failure) |
 | `PEDALPOINT_API_MODEL` | `claude-sonnet-4-6` | Claude model used for API fallback |
 | `ANTHROPIC_API_KEY` | (unset) | Anthropic API key for Claude API fallback tier. Optional — if unset, circuit skips `api_fallback` and goes directly to `open`. |

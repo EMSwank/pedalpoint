@@ -18,7 +18,20 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Backend: mlx on Apple Silicon, ollama elsewhere
+STATE_DIR="${HOME}/.pedalpoint"
+
+# Backend: --backend > saved choice > existing registration > platform default
+if [ -z "$PEDALPOINT_BACKEND" ] && [ -f "${STATE_DIR}/backend" ]; then
+  PEDALPOINT_BACKEND=$(cat "${STATE_DIR}/backend")
+fi
+if [ -z "$PEDALPOINT_BACKEND" ] && command -v claude >/dev/null 2>&1; then
+  _registered=$(claude mcp get pedalpoint 2>/dev/null || true)
+  case "$_registered" in
+    *PEDALPOINT_BACKEND=mlx*)    PEDALPOINT_BACKEND="mlx" ;;
+    *PEDALPOINT_BACKEND=ollama*) PEDALPOINT_BACKEND="ollama" ;;
+    *:11434*)                    PEDALPOINT_BACKEND="ollama" ;;  # pre-0.4 install
+  esac
+fi
 if [ -z "$PEDALPOINT_BACKEND" ]; then
   if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
     PEDALPOINT_BACKEND="mlx"
@@ -42,7 +55,6 @@ case "$PEDALPOINT_BACKEND" in
 esac
 
 SKILL_DIR="${HOME}/.claude/skills/route-tasks"
-STATE_DIR="${HOME}/.pedalpoint"
 PEDALPOINT_REPO_RAW="https://raw.githubusercontent.com/EMSwank/pedalpoint"
 
 # ── Uninstall ────────────────────────────────────────────────────────────────
@@ -209,8 +221,9 @@ claude mcp add pedalpoint pedalpoint-server --scope user \
   -e "PEDALPOINT_MODE=hybrid" \
   -e "PEDALPOINT_TIMEOUT=120"
 
-# ── Step 8: Create state directory ──────────────────────────────────────────
+# ── Step 8: Create state directory, remember backend ────────────────────────
 mkdir -p "$STATE_DIR"
+printf '%s\n' "$PEDALPOINT_BACKEND" > "${STATE_DIR}/backend"
 
 # ── Step 9: Summary ──────────────────────────────────────────────────────────
 printf '\n'

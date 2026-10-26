@@ -2,6 +2,7 @@ import os
 import platform
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 _DEFAULTS = {
     "mlx": ("http://localhost:8080/v1", "mlx-community/gemma-4-e4b-it-4bit"),
@@ -29,13 +30,22 @@ def _platform_default_backend() -> str:
     return "ollama"
 
 
+def _saved_backend() -> str | None:
+    """Backend chosen by install.sh, so `pedalpoint doctor` matches the server."""
+    try:
+        saved = (Path.home() / ".pedalpoint" / "backend").read_text().strip()
+    except OSError:
+        return None
+    return saved or None
+
+
 def _resolve_backend(base_url: str | None) -> str:
     explicit = os.getenv("PEDALPOINT_BACKEND")
     if explicit:
         return explicit
     if base_url:
         return "ollama" if ":11434" in base_url else "mlx"
-    return _platform_default_backend()
+    return _saved_backend() or _platform_default_backend()
 
 
 @lru_cache(maxsize=1)

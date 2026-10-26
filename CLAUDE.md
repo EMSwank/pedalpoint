@@ -100,6 +100,8 @@ API_FALLBACK state: same schema as OPEN but `"circuit": "api_fallback"`. Judgmen
 - `_create_draft` is the testable core shared by `local_llm` and `claude_api`; it takes a `generate(prompt, system) -> (text, prompt_tokens, completion_tokens)` callable.
 - Backend inference: `PEDALPOINT_BACKEND` wins; else a set `PEDALPOINT_BASE_URL` containing `:11434` → ollama, other URL → mlx; else `_platform_default_backend()` (mlx on macOS arm64). `tests/conftest.py` pins the platform to Linux so defaults are host-independent — tests needing mlx defaults monkeypatch `pedalpoint.config._platform_default_backend`.
 - `mlx_lm.server`'s `/v1/models` lists every model in the local HF cache, so doctor's "model available" means downloaded.
+- Backend resolution order: `PEDALPOINT_BACKEND` → `PEDALPOINT_BASE_URL` inference → `~/.pedalpoint/backend` (written by install.sh) → platform default. `tests/conftest.py` points `HOME` at a temp dir so the real file never leaks into tests.
+- Always send `max_tokens` (`PEDALPOINT_MAX_TOKENS`, default 8192): `mlx_lm.server` defaults to 512 and silently truncates; `finish_reason == "length"` raises instead of writing a draft.
 - 402 errors trigger permanent fallback. 429 errors trigger retry-with-backoff only. Do not conflate them.
 - The companion skill has no Python backing. Skill tests are manual scenarios in `tests/skill/scenarios/`.
 - `ANTHROPIC_API_KEY` is optional at startup. If absent, `_call_claude_api` raises `ValueError("ANTHROPIC_API_KEY not set...")`. FastMCP stringifies it; the skill's error dispatch table matches on that text and writes OPEN state.
