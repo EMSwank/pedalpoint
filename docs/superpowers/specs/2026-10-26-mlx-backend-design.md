@@ -59,11 +59,14 @@ new to this kind of measurement; the design below picks the metrics.
    `/v1/chat/completions` API, so `_call_local_llm` stays one code path. Backend only
    changes defaults, error/fix messages (`server.py`, `doctor.py`), `install.sh`
    steps, and skill hint text.
-2. **Default model: Qwen3.5 4B, 4-bit, MLX** (`mlx-community/Qwen3.5-4B-MLX-4bit`).
-   The Gemma 4 e2b/e4b spike runs finish outside this work; if one clearly beats Qwen
-   before planning starts, the default changes here. Benchmarking is not part of the
-   build — ongoing comparison comes from `pedalpoint stats` on real work. `mlx_lm.server` keeps
-   the model resident (~2.5GB) — accepted in exchange for no cold starts.
+2. **Default model: Gemma 4 e4b, 4-bit, MLX** (`mlx-community/gemma-4-e4b-it-4bit`).
+   Only model to pass all 4 spike tasks on two runs at usable speed; takes ~4–4.5GB
+   live. **Documented lighter alternative:** Qwen3.5 4B 4-bit
+   (`mlx-community/Qwen3.5-4B-MLX-4bit`, ~3GB) for memory-tight days — it fails
+   test-writing consistently, so expect more Claude fixes. Switching is just
+   `PEDALPOINT_MODEL`. Benchmarking is not part of the build — ongoing comparison
+   comes from `pedalpoint stats` on real work. `mlx_lm.server` keeps
+   the model resident — accepted in exchange for no cold starts.
 3. **Server writes `.draft` files only.** `local_llm` takes a target path and context
    file paths, reads the context itself, calls the model, writes `<target>.draft`,
    and returns a short summary. Claude reads the draft (cheap input), fixes it if
@@ -105,7 +108,7 @@ Add `backend: str` (env `PEDALPOINT_BACKEND`). Backend picks defaults for
 
 | backend | default base_url | default model |
 |---|---|---|
-| `mlx` | `http://localhost:8080/v1` | `mlx-community/Qwen3.5-4B-MLX-4bit` |
+| `mlx` | `http://localhost:8080/v1` | `mlx-community/gemma-4-e4b-it-4bit` |
 | `ollama` | `http://localhost:11434/v1` | `gemma4:12b` |
 
 Default backend: `mlx` on macOS arm64, `ollama` otherwise. Invalid backend → `doctor` FAIL.
@@ -269,11 +272,16 @@ gotchas) and `README.md` for the backend choice, draft-writing server, and `stat
 Four auto-graded pedalpoint-style tasks (add Config field, write a doctor check,
 write pytest tests that must catch a mutant, implement a stats function). Thinking off.
 
-| | gemma4:12b (Ollama) | Qwen3.5 4B 4-bit (MLX) | Gemma 4 e2b 4-bit (MLX) | Gemma 4 e4b 4-bit (MLX) |
-|---|---|---|---|---|
-| Passed | 4/4 | 3/4 (score 6: missing import) | pending | pending |
-| Speed | 9.5 tok/s | 29 tok/s | pending | pending |
-| Cold load | 15–41s | 6.6s | pending | pending |
-| Min available RAM during run | 0.8GB (from 8.3) | 4.5GB (from 7.0) | pending | pending |
+| Model | Backend | Passed (run 1 / run 2) | Speed | Cold load | Weights on disk | Notes |
+|---|---|---|---|---|---|---|
+| gemma4:12b | Ollama | 4/4 | 9.5 tok/s | 15–41s | 7.6GB | Available RAM 8.3 → 0.8GB |
+| **gemma-4-e4b-it-4bit** | MLX | **4/4 · 4/4** | 25–28 tok/s | ~5s | 5.2GB | ~4–4.5GB live; ≤0.2GB swap growth |
+| Qwen3.5-4B-MLX-4bit | MLX | 3/4 · 3/4 | 29 tok/s | 3.5–6.6s | 3.0GB | Fails test-writing both runs (missing import; broken parametrize) |
+| Qwen3.5-4B-OptiQ-4bit | MLX | 3/4 | 22 tok/s | 4.1s | 4.0GB | Same test-writing failure |
+| gemma-4-E4B-it-qat-4bit | MLX | 4/4 | 18 tok/s | 7.4s | 6.8GB | +2.2GB swap |
+| gemma-4-e2b-it-4bit | MLX | 2/4 | 54 tok/s | 5.2s | 3.6GB | Weak tests + logic bug |
+
+Memory readings are system-wide (GPU memory isn't visible in process RSS on Apple
+Silicon) and noisy, since other apps were running.
 
 Spike harness: throwaway, in session scratchpad; not part of the repo.
