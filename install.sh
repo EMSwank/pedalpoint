@@ -137,9 +137,9 @@ fi
 # ── Step 3: Install Python package ──────────────────────────────────────────
 printf '→ Installing pedalpoint via %s...\n' "$PKG_MGR"
 case "$PKG_MGR" in
-  uv)   uv tool install pedalpoint ;;
+  uv)   uv tool install --upgrade pedalpoint ;;
   pipx) pipx install pedalpoint 2>/dev/null || pipx upgrade pedalpoint ;;
-  pip)  pip install --user pedalpoint ;;
+  pip)  pip install --user --upgrade pedalpoint ;;
 esac
 
 # ── Step 3.5: Verify server binary is in PATH ────────────────────────────────

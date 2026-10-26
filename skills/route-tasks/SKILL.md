@@ -11,10 +11,13 @@ You are executing an implementation plan. For each task, follow these steps exac
 
 ## Prerequisites Check
 
-Verify the `local_llm` and `local_llm_status` MCP tools are available. If they are not listed:
-> ⚠ pedalpoint MCP server not connected. Run `pedalpoint doctor` in a terminal to diagnose. Falling back to Agent for all tasks.
+Verify the `local_llm` and `local_llm_status` MCP tools are available.
+- **Neither is listed:**
+  > ⚠ pedalpoint MCP server not connected. Run `pedalpoint doctor` in a terminal to diagnose. Falling back to Agent for all tasks.
+- **`local_llm` is listed but `local_llm_status` is not** (a pre-0.4 server):
+  > ⚠ pedalpoint server is older than this skill — re-run install.sh
 
-Fall back to Agent for all tasks and skip the remaining steps.
+In both cases fall back to Agent for all tasks and skip the remaining steps.
 
 Call `local_llm_status`. It returns JSON: `backend`, `model`, `base_url`, `reachable`, `repo_root`, `server_version`.
 - **`server_version` missing** (in this or any later pedalpoint tool result):

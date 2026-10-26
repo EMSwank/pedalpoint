@@ -213,6 +213,13 @@ EOF
   grep -q "uv" "$HOME/.pkg_called"
 }
 
+@test "uv install upgrades an existing pedalpoint" {
+  stub_recorder uv
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  grep -q "tool install --upgrade pedalpoint" "$HOME/.uv_args"
+}
+
 @test "pipx used when uv absent" {
   # Remove uv stub so command -v uv falls through to system; skip if system uv present
   rm -f "$STUB_DIR/uv"

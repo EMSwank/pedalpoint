@@ -15,3 +15,5 @@
 - Result has no `server_version` key (older server) → also print
   `⚠ pedalpoint server is older than this skill — re-run install.sh`
 - `repo_root` is null → print a note that local handoffs need a git repo; all tasks to Agent
+- `local_llm` is listed but `local_llm_status` is not (0.3 server with 0.4 skill) →
+  print `⚠ pedalpoint server is older than this skill — re-run install.sh`, all tasks to Agent
