@@ -61,8 +61,16 @@ def test_cli_mlx_supervise_passes_args(monkeypatch):
     monkeypatch.setattr(autostart, "run_supervisor", fake)
     monkeypatch.setattr("signal.signal", lambda *a: None)
     argv = [
-        "pedalpoint", "mlx-supervise", "--model", "m", "--port", "9000",
-        "--idle-minutes", "5", "--mlx-server", "/bin/mlx_lm.server",
+        "pedalpoint",
+        "mlx-supervise",
+        "--model",
+        "m",
+        "--port",
+        "9000",
+        "--idle-minutes",
+        "5",
+        "--mlx-server",
+        "/bin/mlx_lm.server",
     ]
     with patch("sys.argv", argv):
         with pytest.raises(SystemExit) as exc:
@@ -84,8 +92,18 @@ def test_cli_mlx_supervise_sigterm_exits_cleanly(monkeypatch):
         handlers[signal.SIGTERM](signal.SIGTERM, None)
 
     monkeypatch.setattr(autostart, "run_supervisor", fake)
-    argv = ["pedalpoint", "mlx-supervise", "--model", "m", "--port", "1",
-            "--idle-minutes", "1", "--mlx-server", "x"]
+    argv = [
+        "pedalpoint",
+        "mlx-supervise",
+        "--model",
+        "m",
+        "--port",
+        "1",
+        "--idle-minutes",
+        "1",
+        "--mlx-server",
+        "x",
+    ]
     with patch("sys.argv", argv):
         with pytest.raises(SystemExit) as exc:
             main()

@@ -81,11 +81,18 @@ def find_mlx_server() -> str | None:
 
 def supervisor_cmd(cfg: Config, mlx_server: str) -> list[str]:
     return [
-        sys.executable, "-m", "pedalpoint.cli", "mlx-supervise",
-        "--model", cfg.model,
-        "--port", str(port_of(cfg.base_url)),
-        "--idle-minutes", str(cfg.idle_minutes),
-        "--mlx-server", mlx_server,
+        sys.executable,
+        "-m",
+        "pedalpoint.cli",
+        "mlx-supervise",
+        "--model",
+        cfg.model,
+        "--port",
+        str(port_of(cfg.base_url)),
+        "--idle-minutes",
+        str(cfg.idle_minutes),
+        "--mlx-server",
+        mlx_server,
     ]
 
 

@@ -144,11 +144,18 @@ def test_find_mlx_server_falls_back_to_local_bin(
 def test_supervisor_cmd() -> None:
     cmd = autostart.supervisor_cmd(MLX_CFG, "/bin/mlx_lm.server")
     assert cmd == [
-        sys.executable, "-m", "pedalpoint.cli", "mlx-supervise",
-        "--model", "mlx-community/gemma-4-e4b-it-4bit",
-        "--port", "8080",
-        "--idle-minutes", "20",
-        "--mlx-server", "/bin/mlx_lm.server",
+        sys.executable,
+        "-m",
+        "pedalpoint.cli",
+        "mlx-supervise",
+        "--model",
+        "mlx-community/gemma-4-e4b-it-4bit",
+        "--port",
+        "8080",
+        "--idle-minutes",
+        "20",
+        "--mlx-server",
+        "/bin/mlx_lm.server",
     ]
 
 
@@ -286,8 +293,13 @@ def test_supervisor_stops_child_when_idle(state: Path) -> None:
         return child
 
     code = autostart.run_supervisor(
-        "m", 8080, 20, "/bin/mlx_lm.server",
-        state_dir=state, popen=popen, sleep=lambda _s: None,
+        "m",
+        8080,
+        20,
+        "/bin/mlx_lm.server",
+        state_dir=state,
+        popen=popen,
+        sleep=lambda _s: None,
         now=_clock(state, 20 * 60),
     )
     assert code == 0
@@ -299,8 +311,13 @@ def test_supervisor_stops_child_when_idle(state: Path) -> None:
 def test_supervisor_keeps_child_while_active(state: Path) -> None:
     child = FakeProc(exits_after=3, returncode=7)
     code = autostart.run_supervisor(
-        "m", 8080, 20, "/bin/mlx_lm.server",
-        state_dir=state, popen=lambda _c: child, sleep=lambda _s: None,
+        "m",
+        8080,
+        20,
+        "/bin/mlx_lm.server",
+        state_dir=state,
+        popen=lambda _c: child,
+        sleep=lambda _s: None,
         now=_clock(state, 60),
     )
     assert code == 7
@@ -311,8 +328,13 @@ def test_supervisor_kills_child_that_ignores_terminate(state: Path) -> None:
     child = FakeProc()
     child.hang_on_wait = True
     autostart.run_supervisor(
-        "m", 8080, 20, "/bin/mlx_lm.server",
-        state_dir=state, popen=lambda _c: child, sleep=lambda _s: None,
+        "m",
+        8080,
+        20,
+        "/bin/mlx_lm.server",
+        state_dir=state,
+        popen=lambda _c: child,
+        sleep=lambda _s: None,
         now=_clock(state, 21 * 60),
     )
     assert child.terminated and child.killed
@@ -326,8 +348,13 @@ def test_supervisor_stops_child_on_error(state: Path) -> None:
 
     with pytest.raises(KeyboardInterrupt):
         autostart.run_supervisor(
-            "m", 8080, 20, "/bin/mlx_lm.server",
-            state_dir=state, popen=lambda _c: child, sleep=boom,
+            "m",
+            8080,
+            20,
+            "/bin/mlx_lm.server",
+            state_dir=state,
+            popen=lambda _c: child,
+            sleep=boom,
         )
     assert child.terminated
 
@@ -337,8 +364,12 @@ def test_second_supervisor_exits_without_starting(state: Path) -> None:
     with open(state / "mlx.supervisor.lock", "w") as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
         code = autostart.run_supervisor(
-            "m", 8080, 20, "/bin/mlx_lm.server",
-            state_dir=state, popen=lambda c: started.append(c),
+            "m",
+            8080,
+            20,
+            "/bin/mlx_lm.server",
+            state_dir=state,
+            popen=lambda c: started.append(c),
         )
     assert code == 0
     assert started == []
