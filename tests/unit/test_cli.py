@@ -46,3 +46,47 @@ def test_cli_version(capsys):
             main()
     assert exc.value.code == 0
     assert capsys.readouterr().out.startswith("pedalpoint ")
+
+
+def test_cli_mlx_supervise_passes_args(monkeypatch):
+    from pedalpoint import autostart
+    from pedalpoint.cli import main
+
+    seen = {}
+
+    def fake(model, port, idle_minutes, mlx_server):
+        seen.update(model=model, port=port, idle=idle_minutes, bin=mlx_server)
+        return 3
+
+    monkeypatch.setattr(autostart, "run_supervisor", fake)
+    monkeypatch.setattr("signal.signal", lambda *a: None)
+    argv = [
+        "pedalpoint", "mlx-supervise", "--model", "m", "--port", "9000",
+        "--idle-minutes", "5", "--mlx-server", "/bin/mlx_lm.server",
+    ]
+    with patch("sys.argv", argv):
+        with pytest.raises(SystemExit) as exc:
+            main()
+    assert exc.value.code == 3
+    assert seen == {"model": "m", "port": 9000, "idle": 5, "bin": "/bin/mlx_lm.server"}
+
+
+def test_cli_mlx_supervise_sigterm_exits_cleanly(monkeypatch):
+    import signal
+
+    from pedalpoint import autostart
+    from pedalpoint.cli import main
+
+    handlers = {}
+    monkeypatch.setattr("signal.signal", lambda sig, h: handlers.__setitem__(sig, h))
+
+    def fake(*_a):
+        handlers[signal.SIGTERM](signal.SIGTERM, None)
+
+    monkeypatch.setattr(autostart, "run_supervisor", fake)
+    argv = ["pedalpoint", "mlx-supervise", "--model", "m", "--port", "1",
+            "--idle-minutes", "1", "--mlx-server", "x"]
+    with patch("sys.argv", argv):
+        with pytest.raises(SystemExit) as exc:
+            main()
+    assert exc.value.code == 0

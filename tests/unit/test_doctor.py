@@ -554,7 +554,8 @@ def test_check_backend_fails_for_unknown():
 def test_server_reachable_mlx_fail_uses_mlx_hint():
     from pedalpoint.doctor import check_server_reachable
 
-    result = check_server_reachable(MLX_DOCTOR_CFG, None)
+    manual = dataclasses.replace(MLX_DOCTOR_CFG, autostart=False)
+    result = check_server_reachable(manual, None)
     assert result.status == "FAIL"
     assert "MLX not reachable" in result.message
     assert result.fix == "mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit"
@@ -587,3 +588,71 @@ def test_run_all_order(tmp_path):
     ]
     assert "not reachable" in results[2].message
     assert results[3].message.startswith("Model")
+
+
+# ---------------------------------------------------------------------------
+# MLX autostart
+# ---------------------------------------------------------------------------
+
+MODEL_CACHE = "models--mlx-community--gemma-4-e4b-it-4bit"
+
+
+def test_server_down_with_autostart_warns(monkeypatch):
+    from pedalpoint import autostart
+    from pedalpoint.doctor import check_server_reachable
+
+    monkeypatch.setattr(autostart, "find_mlx_server", lambda: "/bin/mlx_lm.server")
+    result = check_server_reachable(MLX_DOCTOR_CFG, None)
+    assert result.status == "WARN"
+    assert result.message == (
+        "MLX not running — starts on the first local_llm call, "
+        "stops after 20 idle minutes"
+    )
+    assert result.fix is None
+
+
+def test_server_down_with_autostart_but_no_binary_fails(monkeypatch):
+    from pedalpoint import autostart
+    from pedalpoint.doctor import check_server_reachable
+
+    monkeypatch.setattr(autostart, "find_mlx_server", lambda: None)
+    result = check_server_reachable(MLX_DOCTOR_CFG, None)
+    assert result.status == "FAIL"
+    assert "mlx_lm.server not found" in result.message
+    assert result.fix == "uv tool install mlx-lm"
+
+
+def test_model_check_reads_hf_cache_when_server_down(monkeypatch, tmp_path):
+    from pedalpoint.doctor import check_model_available
+
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    result = check_model_available(MLX_DOCTOR_CFG, None)
+    assert result.status == "FAIL"
+    assert result.fix == (
+        "uvx --from huggingface_hub hf download mlx-community/gemma-4-e4b-it-4bit"
+    )
+    (tmp_path / MODEL_CACHE / "snapshots" / "abc").mkdir(parents=True)
+    result = check_model_available(MLX_DOCTOR_CFG, None)
+    assert result.status == "PASS"
+    assert result.message == "Model mlx-community/gemma-4-e4b-it-4bit downloaded"
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({"HF_HUB_CACHE": "/a"}, "/a"),
+        ({"HF_HOME": "/b"}, "/b/hub"),
+        ({}, "HOME/.cache/huggingface/hub"),
+    ],
+)
+def test_hf_hub_cache_resolution(monkeypatch, env, expected):
+    from pathlib import Path
+
+    from pedalpoint.doctor import hf_hub_cache
+
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.delenv("HF_HOME", raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    want = expected.replace("HOME", str(Path.home()))
+    assert hf_hub_cache() == Path(want)

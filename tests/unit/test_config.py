@@ -206,3 +206,31 @@ def test_env_base_url_beats_state_file(monkeypatch, tmp_path):
     get_config.cache_clear()
     assert get_config().backend == "mlx"
     get_config.cache_clear()
+
+
+def test_autostart_defaults(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.delenv("PEDALPOINT_AUTOSTART", raising=False)
+    monkeypatch.delenv("PEDALPOINT_IDLE_MINUTES", raising=False)
+    get_config.cache_clear()
+    cfg = get_config()
+    assert cfg.autostart is True
+    assert cfg.idle_minutes == 20
+    get_config.cache_clear()
+
+
+@pytest.mark.parametrize("value", ["0", "false", "No", "off"])
+def test_autostart_disabled(monkeypatch, value):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("PEDALPOINT_AUTOSTART", value)
+    get_config.cache_clear()
+    assert get_config().autostart is False
+    get_config.cache_clear()
+
+
+def test_idle_minutes_env(monkeypatch):
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("PEDALPOINT_IDLE_MINUTES", "5")
+    get_config.cache_clear()
+    assert get_config().idle_minutes == 5
+    get_config.cache_clear()

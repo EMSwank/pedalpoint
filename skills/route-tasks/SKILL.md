@@ -19,10 +19,11 @@ Verify the `local_llm` and `local_llm_status` MCP tools are available.
 
 In both cases fall back to Agent for all tasks and skip the remaining steps.
 
-Call `local_llm_status`. It returns JSON: `backend`, `model`, `base_url`, `reachable`, `repo_root`, `server_version`.
+Call `local_llm_status`. It returns JSON: `backend`, `model`, `base_url`, `reachable`, `repo_root`, `server_version`, `autostart`, `idle_minutes`.
 - **`server_version` missing** (in this or any later pedalpoint tool result):
   > ⚠ pedalpoint server is older than this skill — re-run install.sh
-- **`reachable` is false:**
+- **`reachable` is false and `autostart` is true:** not a problem. The server starts the model on the first `local_llm` call (that call takes ~10s longer) and stops it after `idle_minutes` without calls. Print nothing and continue.
+- **`reachable` is false otherwise:**
   > ⚠ `<MLX|Ollama>` unreachable — start it with: `<hint>`
 
   Hint: backend `mlx` → `mlx_lm.server --model <model>`; backend `ollama` → `ollama serve`. Fall back to Agent for all tasks and skip the remaining steps.
@@ -219,6 +220,7 @@ Monitor the Agent spawn result. On error, proceed to Step 4b.
 | `Cannot read`, `Bad line range` | Fix the `context_paths` / `target_path` and retry once. Still failing: do the task yourself. |
 | `Model returned empty output` | Retry once. Still empty: do the task yourself. |
 | `Model output truncated` | Split the task into smaller files, or do it yourself. |
+| `did not start within`, `exited while starting`, `mlx_lm.server not found` | Print the error (it names the log or the install fix). Do the task yourself. |
 | `not reachable`, `timed out` (from `local_llm`) | Print `⚠ local LLM unreachable — falling back to Claude`. Do the task yourself. |
 | `not found — run:` | Print the error (it contains the download command). Do the task yourself. |
 | **any other `local_llm` error**, or a `claude_api` error that does not start with `HTTP `, `Anthropic API`, or `ANTHROPIC_API_KEY` | Do the task yourself directly. Never treat it as quota. |

@@ -39,12 +39,14 @@ Restart Claude Code after install.
 
 ## Usage
 
-The model server must be running before you open Claude Code:
+**MLX starts itself.** The first `local_llm` call starts `mlx_lm.server` (that call takes ~10s longer while the model loads) and it stops after 20 minutes with no calls from any Claude Code session, freeing its ~5GB. A server you start by hand is used as-is and never stopped. Set `PEDALPOINT_AUTOSTART=0` to always manage it yourself:
 
 ```sh
-mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit   # backend mlx
+mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit   # backend mlx, manual
 ollama serve                                              # backend ollama (or open Ollama.app)
 ```
+
+Ollama already unloads idle models on its own (`OLLAMA_KEEP_ALIVE`, default 5 minutes).
 
 Then in any Claude Code session:
 
@@ -79,6 +81,8 @@ Should show `Status: ✓ Connected`. If disconnected, run `pedalpoint-server` di
 | `PEDALPOINT_MODEL` | mlx: `mlx-community/gemma-4-e4b-it-4bit`; ollama: `gemma4:12b` | Local model. See [Choosing a model](#choosing-a-model). |
 | `PEDALPOINT_MODE` | `hybrid` | Routing mode |
 | `PEDALPOINT_TIMEOUT` | `120` | Read timeout in seconds |
+| `PEDALPOINT_AUTOSTART` | `1` | MLX only: start `mlx_lm.server` on the first call when it isn't running. `0` to manage it yourself. |
+| `PEDALPOINT_IDLE_MINUTES` | `20` | MLX only: stop an auto-started server after this many minutes without calls from any session. |
 | `PEDALPOINT_MAX_TOKENS` | `8192` | Max tokens per draft. Sent on every request (`mlx_lm.server` defaults to 512). Truncated output is rejected, never written. |
 | `PEDALPOINT_INITIAL_FALLBACK_MINUTES` | `60` | Initial circuit-open duration (doubles on each probe failure) |
 | `PEDALPOINT_API_MODEL` | `claude-sonnet-4-6` | Claude model used for API fallback |
@@ -94,7 +98,7 @@ Measured on a 16GB M4 MacBook Air with normal apps open (four pedalpoint-style c
 | `mlx-community/Qwen3.5-4B-MLX-4bit` | MLX | 3/4 · 3/4 | 29 tok/s | ~3GB | Lighter; consistently fumbles test-writing |
 | `gemma4:12b` | Ollama | 4/4 | 9.5 tok/s | ~7.5GB | Accurate but slow; pushes a 16GB Mac into swap |
 
-Download a different MLX model with `uvx --from huggingface_hub hf download <repo>`, set `PEDALPOINT_MODEL`, and restart `mlx_lm.server`. `pedalpoint stats` shows whether a model pays off on your real work.
+Download a different MLX model with `uvx --from huggingface_hub hf download <repo>`, set `PEDALPOINT_MODEL`, and restart Claude Code (an auto-started server picks up the new model the next time it starts). `pedalpoint stats` shows whether a model pays off on your real work.
 
 ## Measuring savings
 
@@ -115,7 +119,9 @@ curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh 
 
 | Symptom | Fix |
 | :--- | :--- |
-| `local_llm` calls fail with "MLX not reachable" | `mlx_lm.server --model <model>` |
+| `local_llm` calls fail with "MLX not reachable" | Autostart is off or the URL isn't local: `mlx_lm.server --model <model>` |
+| "MLX server did not start" / "exited while starting" | Read `~/.pedalpoint/mlx.log` |
+| "mlx_lm.server not found" | `uv tool install mlx-lm` |
 | `local_llm` calls fail with "Ollama not reachable" | `ollama serve` (or open Ollama.app on macOS) |
 | `local_llm` fails with "Model … not found" | The error includes the download command (`hf download …` or `ollama pull …`) |
 | `local_llm` fails with "outside the project repo" or "Not in a git repository" | Start Claude Code from inside the project's git repo |

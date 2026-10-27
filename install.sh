@@ -234,7 +234,8 @@ printf '✓ State dir:   %s\n' "$STATE_DIR"
 printf '✓ Backend:     %s (%s)\n' "$PEDALPOINT_BACKEND" "$PEDALPOINT_MODEL"
 printf '\n'
 if [ "$PEDALPOINT_BACKEND" = "mlx" ]; then
-  printf '→ Start the model server: mlx_lm.server --model %s\n' "$PEDALPOINT_MODEL"
+  printf '→ MLX starts automatically on first use and stops after 20 idle minutes\n'
+  printf '  (set PEDALPOINT_IDLE_MINUTES, or PEDALPOINT_AUTOSTART=0 to manage it yourself).\n'
 fi
 printf '→ Restart Claude Code to activate.\n'
 printf '→ Then invoke: /route-tasks\n'

@@ -121,7 +121,7 @@ teardown() {
   grep -q "PEDALPOINT_BACKEND=mlx" "$HOME/.claude_args"
   grep -q "PEDALPOINT_BASE_URL=http://localhost:8080/v1" "$HOME/.claude_args"
   grep -q "PEDALPOINT_MODEL=mlx-community/gemma-4-e4b-it-4bit" "$HOME/.claude_args"
-  printf '%s\n' "$output" | grep -q "mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit"
+  printf '%s\n' "$output" | grep -q "MLX starts automatically on first use"
 }
 
 @test "mlx model download failure warns but does not abort" {

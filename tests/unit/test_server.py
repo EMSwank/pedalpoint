@@ -751,3 +751,95 @@ async def test_create_draft_binary_target_is_clear_error(repo: Path) -> None:
     (repo / "src" / "blob.py").write_bytes(b"\xff\xfe\x00bad")
     with pytest.raises(ValueError, match=r"^Cannot read 'src/blob.py'"):
         await _draft(repo, "x = 1\n", target_path="src/blob.py")
+
+
+# ── MLX autostart ───────────────────────────────────────────────────────────
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_local_llm_mlx_ensures_server_running_first(repo: Path) -> None:
+    from pedalpoint.server import local_llm
+
+    order: list[str] = []
+    models = respx.get("http://localhost:8080/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+
+    async def fake_ensure(cfg: Config, probe) -> None:
+        order.append("ensure")
+        assert await probe() is True
+
+    def on_post(_req: httpx.Request) -> httpx.Response:
+        order.append("generate")
+        return httpx.Response(200, json=MOCK_RESPONSE)
+
+    respx.post(MLX_URL).mock(side_effect=on_post)
+    async with httpx.AsyncClient(base_url="http://localhost:8080/v1") as client:
+        ctx = _make_ctx(MLX_CFG, http_client=client)
+        ctx.request_context.lifespan_context["repo_root"] = repo
+        with patch("pedalpoint.server.autostart.ensure_running", new=fake_ensure):
+            await local_llm(ctx, "write foo", "src/foo.py")
+    assert order == ["ensure", "generate"]
+    assert models.called
+    assert (Path.home() / ".pedalpoint" / "mlx.last_used").exists()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_autostart_probe_false_when_down() -> None:
+    from pedalpoint.server import _probe
+
+    respx.get("http://localhost:8080/v1/models").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    async with httpx.AsyncClient(base_url="http://localhost:8080/v1") as client:
+        assert await _probe(client) is False
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_local_llm_ollama_never_autostarts(repo: Path) -> None:
+    from pedalpoint.server import local_llm
+
+    respx.post("http://localhost:11434/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=MOCK_RESPONSE)
+    )
+    ensure = AsyncMock()
+    async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
+        ctx = _make_ctx(TEST_CFG, http_client=client)
+        ctx.request_context.lifespan_context["repo_root"] = repo
+        with patch("pedalpoint.server.autostart.ensure_running", new=ensure):
+            await local_llm(ctx, "write foo", "src/foo.py")
+    ensure.assert_not_called()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_local_llm_status_reports_autostart() -> None:
+    from pedalpoint.server import local_llm_status
+
+    respx.get("http://localhost:8080/v1/models").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    async with httpx.AsyncClient(base_url="http://localhost:8080/v1") as client:
+        status = json.loads(await local_llm_status(_make_ctx(MLX_CFG, client)))
+    assert status["reachable"] is False
+    assert status["autostart"] is True
+    assert status["idle_minutes"] == 20
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_lifespan_mlx_autostart_logs_info_not_warning(monkeypatch) -> None:
+    monkeypatch.setenv("PEDALPOINT_BACKEND", "mlx")
+    get_config.cache_clear()
+    respx.get("http://localhost:8080/v1/models").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    with patch("pedalpoint.server.logger") as mock_logger:
+        async with lifespan(None):
+            pass
+    mock_logger.warning.assert_not_called()
+    assert "starts on the first local_llm call" in mock_logger.info.call_args[0][0]
+    get_config.cache_clear()

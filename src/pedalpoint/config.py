@@ -22,6 +22,8 @@ class Config:
     api_model: str
     api_key: str | None
     max_tokens: int = 8192
+    autostart: bool = True
+    idle_minutes: int = 20
 
 
 def _platform_default_backend() -> str:
@@ -66,4 +68,7 @@ def get_config() -> Config:
         api_model=os.getenv("PEDALPOINT_API_MODEL", "claude-sonnet-4-6"),
         api_key=os.getenv("ANTHROPIC_API_KEY"),
         max_tokens=int(os.getenv("PEDALPOINT_MAX_TOKENS", "8192")),
+        autostart=os.getenv("PEDALPOINT_AUTOSTART", "1").strip().lower()
+        not in {"0", "false", "no", "off"},
+        idle_minutes=int(os.getenv("PEDALPOINT_IDLE_MINUTES", "20")),
     )
