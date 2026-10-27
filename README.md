@@ -125,6 +125,7 @@ curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh 
 | `local_llm` calls fail with "Ollama not reachable" | `ollama serve` (or open Ollama.app on macOS) |
 | `local_llm` fails with "Model … not found" | The error includes the download command (`hf download …` or `ollama pull …`) |
 | `local_llm` fails with "outside the project repo" or "Not in a git repository" | Start Claude Code from inside the project's git repo |
+| Drafts land in the main checkout instead of your worktree | Update the skill (re-run install.sh): it passes `worktree` so drafts go to the session's current worktree |
 | Anything else | `pedalpoint doctor` |
 | `/route-tasks` says `local_llm` tool not available | `claude mcp get pedalpoint` (check status; if missing, re-run install) |
 | `claude_api` returns "ANTHROPIC_API_KEY not set" — api_fallback tier disabled | `export ANTHROPIC_API_KEY=sk-ant-...` then restart Claude Code |

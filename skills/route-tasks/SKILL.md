@@ -149,7 +149,8 @@ When entering Step 3 without a prior classification from Step 2 (e.g., `local-on
 
 ### Build the handoff arguments
 
-- `target_path`: the file to create or replace (repo-relative).
+- `target_path`: the file to create or replace (relative to your working directory's repo root).
+- `worktree`: your current working directory (absolute). Always pass it. The server started in whatever checkout the session opened in; if you have since moved into a git worktree, this is what makes the draft land in the worktree instead of the main checkout.
 - `context_paths`: list of `"path"` or `"path:START-END"` (1-indexed, inclusive) from the courier. The server reads these files itself.
 - `task`: the instruction in plain words, plus the framework note if any. **Never paste code into `task`.**
 
@@ -163,7 +164,7 @@ Start on a branch: `git checkout -b feat/<task-slug>` (or appropriate prefix).
 
 ### Local path (circuit closed — mechanical and structural)
 
-1. Call `local_llm(task=<task>, target_path=<target>, context_paths=[...])`. It writes `<target>.draft` and returns JSON with `handoff_id`, `draft_path`, `lines`, `lines_changed`.
+1. Call `local_llm(task=<task>, target_path=<target>, context_paths=[...], worktree=<cwd>)`. It writes `<target>.draft` and returns JSON with `handoff_id`, `draft_path`, `lines`, `lines_changed`.
 2. Read `<target>.draft`. Review it against the task.
 3. Fix what's wrong with Edit on the `.draft` (or rewrite it if it's mostly wrong).
    - **Judgment task in disguise** (security-sensitive, needs design decisions): `rm <target>.draft`, `record_outcome(handoff_id, 1, "<reason>")`, then run the judgment path.
@@ -189,11 +190,11 @@ Start on a branch: `git checkout -b feat/<task-slug>` (or appropriate prefix).
 
 ### API fallback path (circuit `api_fallback`)
 
-Mechanical and structural tasks use the local path above unchanged. Judgment tasks call `claude_api(task=<task>, target_path=<target>, context_paths=[...])` instead of spawning an Agent. It has the same contract as `local_llm`: writes `<target>.draft`, returns JSON with `handoff_id`. Then follow local path steps 2–9.
+Mechanical and structural tasks use the local path above unchanged. Judgment tasks call `claude_api(task=<task>, target_path=<target>, context_paths=[...], worktree=<cwd>)` instead of spawning an Agent. It has the same contract as `local_llm`: writes `<target>.draft`, returns JSON with `handoff_id`. Then follow local path steps 2–9.
 
 ### Open-circuit path (circuit `open` — Claude quota exhausted)
 
-1. Call `local_llm(task, target_path, context_paths)` (skip rule OFF).
+1. Call `local_llm(task, target_path, context_paths, worktree)` (skip rule OFF).
 2. No review: `mv <target>.draft <target>`
 3. Run `pytest tests/ -x -q`; trivial failures fixed inline only if possible without review.
 4. Commit with `[unreviewed]` in the message.
@@ -215,7 +216,7 @@ Monitor the Agent spawn result. On error, proceed to Step 4b.
 
 | Error text contains | Action |
 |---|---|
-| `outside the project repo`, `Not in a git repository`, `must be a file` | Do the task yourself directly. |
+| `outside the project repo`, `Not in a git repository`, `must be a file`, `is not a worktree of`, `is not inside a git worktree` | Do the task yourself directly. |
 | `too large for local regeneration`, `Context too large` | Do the task yourself directly. |
 | `Cannot read`, `Bad line range` | Fix the `context_paths` / `target_path` and retry once. Still failing: do the task yourself. |
 | `Model returned empty output` | Retry once. Still empty: do the task yourself. |

@@ -843,3 +843,63 @@ async def test_lifespan_mlx_autostart_logs_info_not_warning(monkeypatch) -> None
     mock_logger.warning.assert_not_called()
     assert "starts on the first local_llm call" in mock_logger.info.call_args[0][0]
     get_config.cache_clear()
+
+
+# ── worktrees ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_local_llm_writes_draft_into_named_worktree(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import subprocess
+
+    from pedalpoint.server import local_llm
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    main = tmp_path / "main"
+    main.mkdir()
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "init", "-q"], cwd=main, check=True)
+    (main / "a.py").write_text("x = 1\n")
+    subprocess.run([*git, "add", "."], cwd=main, check=True)
+    subprocess.run([*git, "commit", "-qm", "i"], cwd=main, check=True)
+    subprocess.run(
+        [*git, "worktree", "add", "-q", "../wt", "-b", "wt"], cwd=main, check=True
+    )
+    wt = (tmp_path / "wt").resolve()
+    (wt / "a.py").write_text("x = 'worktree'\n")
+
+    prompts: list[str] = []
+
+    async def fake_call(_client, prompt, _system, _model, _cfg):
+        prompts.append(prompt)
+        return "x = 2\n", {}
+
+    ctx = _make_ctx(TEST_CFG, http_client=object())
+    ctx.request_context.lifespan_context["repo_root"] = main.resolve()
+    with patch("pedalpoint.server._call_local_llm", new=fake_call):
+        result = json.loads(
+            await local_llm(ctx, "change x", "a.py", ["a.py"], worktree=str(wt))
+        )
+    assert result["draft_path"] == str(wt / "a.py.draft")
+    assert (wt / "a.py.draft").read_text() == "x = 2\n"
+    assert not (main / "a.py.draft").exists()
+    assert "x = 'worktree'" in prompts[0]
+    assert _log_records(main)[-1]["repo"] == str(wt)
+
+
+@pytest.mark.asyncio
+async def test_claude_api_accepts_worktree(repo: Path) -> None:
+    from pedalpoint.server import claude_api
+
+    ctx = _make_ctx(TEST_CFG_WITH_KEY)
+    ctx.request_context.lifespan_context["repo_root"] = repo
+    with patch(
+        "pedalpoint.server._call_claude_api",
+        new=AsyncMock(return_value=("x = 1\n", 1, 1)),
+    ):
+        result = json.loads(
+            await claude_api(ctx, "write x", "src/x.py", worktree=str(repo / "src"))
+        )
+    assert result["draft_path"] == str(repo / "src" / "x.py.draft")
