@@ -106,3 +106,107 @@ def test_write_draft_overwrites_regular_file(tmp_path: Path) -> None:
     draft.write_text("old\n")
     write_draft(draft, "new\n")
     assert draft.read_text() == "new\n"
+
+
+# ── worktrees of the pinned repo ────────────────────────────────────────────
+
+
+def _git(*args: str, cwd: Path) -> None:
+    import subprocess
+
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def git_repo(tmp_path: Path) -> Path:
+    """A real repo with a sibling worktree and one under .claude/worktrees."""
+    main = tmp_path / "main"
+    main.mkdir()
+    _git("init", "-q", cwd=main)
+    (main / "a.py").write_text("x = 1\n")
+    _git("add", ".", cwd=main)
+    _git("commit", "-qm", "init", cwd=main)
+    _git("worktree", "add", "-q", "../sibling", "-b", "sib", cwd=main)
+    _git("worktree", "add", "-q", ".claude/worktrees/inner", "-b", "inner", cwd=main)
+    return main.resolve()
+
+
+def test_git_common_dir_same_for_all_worktrees(git_repo: Path) -> None:
+    from pedalpoint.paths import git_common_dir
+
+    expected = git_repo / ".git"
+    assert git_common_dir(git_repo) == expected
+    assert git_common_dir(git_repo.parent / "sibling") == expected
+    assert git_common_dir(git_repo / ".claude/worktrees/inner") == expected
+
+
+def test_git_common_dir_unreadable_git_file(tmp_path: Path) -> None:
+    from pedalpoint.paths import git_common_dir
+
+    (tmp_path / ".git").write_text("not a gitdir line\n")
+    assert git_common_dir(tmp_path) is None
+
+
+def test_select_root_defaults_to_pinned(git_repo: Path) -> None:
+    from pedalpoint.paths import select_root
+
+    assert select_root(git_repo, None) == git_repo
+    assert select_root(None, None) is None
+
+
+@pytest.mark.parametrize("where", ["sibling", "main/.claude/worktrees/inner"])
+def test_select_root_accepts_worktree_of_pinned_repo(
+    git_repo: Path, where: str
+) -> None:
+    from pedalpoint.paths import select_root
+
+    wt = git_repo.parent / where
+    (wt / "src").mkdir()
+    assert select_root(git_repo, str(wt)) == wt
+    assert select_root(git_repo, str(wt / "src")) == wt
+
+
+def test_select_root_rejects_other_repo(git_repo: Path, tmp_path: Path) -> None:
+    from pedalpoint.paths import select_root
+
+    other = tmp_path / "other"
+    other.mkdir()
+    _git("init", "-q", cwd=other)
+    with pytest.raises(ValueError, match="is not a worktree of"):
+        select_root(git_repo, str(other))
+
+
+def test_select_root_rejects_non_git_dir(git_repo: Path, tmp_path: Path) -> None:
+    from pedalpoint.paths import select_root
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    with pytest.raises(ValueError, match="is not inside a git worktree"):
+        select_root(git_repo, str(plain))
+
+
+def test_select_root_needs_a_pinned_repo(tmp_path: Path) -> None:
+    from pedalpoint.paths import select_root
+
+    with pytest.raises(ValueError, match="Not in a git repository"):
+        select_root(None, str(tmp_path))
+
+
+def test_git_common_dir_missing_git(tmp_path: Path) -> None:
+    from pedalpoint.paths import git_common_dir
+
+    assert git_common_dir(tmp_path) is None
+
+
+def test_git_common_dir_gitdir_without_commondir(tmp_path: Path) -> None:
+    from pedalpoint.paths import git_common_dir
+
+    (tmp_path / "real").mkdir()
+    (tmp_path / "wt").mkdir()
+    (tmp_path / "wt" / ".git").write_text("gitdir: ../real\n")
+    assert git_common_dir(tmp_path / "wt") == (tmp_path / "real").resolve()

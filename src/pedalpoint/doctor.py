@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +10,7 @@ from typing import Literal
 
 import httpx
 
-from pedalpoint import backends
+from pedalpoint import autostart, backends
 from pedalpoint.config import Config, get_config
 
 # ── constants ────────────────────────────────────────────────────────────────
@@ -44,6 +45,20 @@ def _fetch_models(cfg: Config) -> httpx.Response | None:
         return httpx.get(f"{cfg.base_url}/models", timeout=DOCTOR_TIMEOUT)
     except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError):
         return None
+
+
+def hf_hub_cache() -> Path:
+    """Where huggingface_hub (and so mlx_lm) keeps downloaded models."""
+    if os.getenv("HF_HUB_CACHE"):
+        return Path(os.environ["HF_HUB_CACHE"])
+    if os.getenv("HF_HOME"):
+        return Path(os.environ["HF_HOME"]) / "hub"
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def _model_downloaded(model: str) -> bool:
+    snapshots = hf_hub_cache() / f"models--{model.replace('/', '--')}" / "snapshots"
+    return snapshots.is_dir() and any(snapshots.iterdir())
 
 
 # ── individual checks ────────────────────────────────────────────────────────
@@ -85,6 +100,19 @@ def check_server_reachable(
         response = _fetch_models(cfg)
     name = backends.label(cfg)
     hint = backends.start_hint(cfg)
+    if response is None and autostart.can_autostart(cfg):
+        if autostart.find_mlx_server() is None:
+            return CheckResult(
+                "FAIL",
+                "MLX not running and mlx_lm.server not found",
+                "uv tool install mlx-lm",
+            )
+        return CheckResult(
+            "WARN",
+            "MLX not running — starts on the first local_llm call, "
+            f"stops after {cfg.idle_minutes} idle minutes",
+            None,
+        )
     if response is None:
         return CheckResult("FAIL", f"{name} not reachable at {cfg.base_url}", hint)
     if response.status_code == 200:
@@ -110,6 +138,14 @@ def check_model_available(
         response = _fetch_models(cfg)
     name = backends.label(cfg)
     start = backends.start_hint(cfg)
+    if response is None and autostart.can_autostart(cfg):
+        if _model_downloaded(cfg.model):
+            return CheckResult("PASS", f"Model {cfg.model} downloaded", None)
+        return CheckResult(
+            "FAIL",
+            f"Model {cfg.model} not downloaded",
+            backends.pull_hint(cfg, cfg.model),
+        )
     if response is None:
         return CheckResult(
             "FAIL",

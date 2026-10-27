@@ -19,10 +19,11 @@ Verify the `local_llm` and `local_llm_status` MCP tools are available.
 
 In both cases fall back to Agent for all tasks and skip the remaining steps.
 
-Call `local_llm_status`. It returns JSON: `backend`, `model`, `base_url`, `reachable`, `repo_root`, `server_version`.
+Call `local_llm_status`. It returns JSON: `backend`, `model`, `base_url`, `reachable`, `repo_root`, `server_version`, `autostart`, `idle_minutes`.
 - **`server_version` missing** (in this or any later pedalpoint tool result):
   > ⚠ pedalpoint server is older than this skill — re-run install.sh
-- **`reachable` is false:**
+- **`reachable` is false and `autostart` is true:** not a problem. The server starts the model on the first `local_llm` call (that call takes ~10s longer) and stops it after `idle_minutes` without calls. Print nothing and continue.
+- **`reachable` is false otherwise:**
   > ⚠ `<MLX|Ollama>` unreachable — start it with: `<hint>`
 
   Hint: backend `mlx` → `mlx_lm.server --model <model>`; backend `ollama` → `ollama serve`. Fall back to Agent for all tasks and skip the remaining steps.
@@ -148,7 +149,8 @@ When entering Step 3 without a prior classification from Step 2 (e.g., `local-on
 
 ### Build the handoff arguments
 
-- `target_path`: the file to create or replace (repo-relative).
+- `target_path`: the file to create or replace (relative to your working directory's repo root).
+- `worktree`: your current working directory (absolute). Always pass it. The server started in whatever checkout the session opened in; if you have since moved into a git worktree, this is what makes the draft land in the worktree instead of the main checkout.
 - `context_paths`: list of `"path"` or `"path:START-END"` (1-indexed, inclusive) from the courier. The server reads these files itself.
 - `task`: the instruction in plain words, plus the framework note if any. **Never paste code into `task`.**
 
@@ -162,7 +164,7 @@ Start on a branch: `git checkout -b feat/<task-slug>` (or appropriate prefix).
 
 ### Local path (circuit closed — mechanical and structural)
 
-1. Call `local_llm(task=<task>, target_path=<target>, context_paths=[...])`. It writes `<target>.draft` and returns JSON with `handoff_id`, `draft_path`, `lines`, `lines_changed`.
+1. Call `local_llm(task=<task>, target_path=<target>, context_paths=[...], worktree=<cwd>)`. It writes `<target>.draft` and returns JSON with `handoff_id`, `draft_path`, `lines`, `lines_changed`.
 2. Read `<target>.draft`. Review it against the task.
 3. Fix what's wrong with Edit on the `.draft` (or rewrite it if it's mostly wrong).
    - **Judgment task in disguise** (security-sensitive, needs design decisions): `rm <target>.draft`, `record_outcome(handoff_id, 1, "<reason>")`, then run the judgment path.
@@ -188,11 +190,11 @@ Start on a branch: `git checkout -b feat/<task-slug>` (or appropriate prefix).
 
 ### API fallback path (circuit `api_fallback`)
 
-Mechanical and structural tasks use the local path above unchanged. Judgment tasks call `claude_api(task=<task>, target_path=<target>, context_paths=[...])` instead of spawning an Agent. It has the same contract as `local_llm`: writes `<target>.draft`, returns JSON with `handoff_id`. Then follow local path steps 2–9.
+Mechanical and structural tasks use the local path above unchanged. Judgment tasks call `claude_api(task=<task>, target_path=<target>, context_paths=[...], worktree=<cwd>)` instead of spawning an Agent. It has the same contract as `local_llm`: writes `<target>.draft`, returns JSON with `handoff_id`. Then follow local path steps 2–9.
 
 ### Open-circuit path (circuit `open` — Claude quota exhausted)
 
-1. Call `local_llm(task, target_path, context_paths)` (skip rule OFF).
+1. Call `local_llm(task, target_path, context_paths, worktree)` (skip rule OFF).
 2. No review: `mv <target>.draft <target>`
 3. Run `pytest tests/ -x -q`; trivial failures fixed inline only if possible without review.
 4. Commit with `[unreviewed]` in the message.
@@ -214,11 +216,12 @@ Monitor the Agent spawn result. On error, proceed to Step 4b.
 
 | Error text contains | Action |
 |---|---|
-| `outside the project repo`, `Not in a git repository`, `must be a file` | Do the task yourself directly. |
+| `outside the project repo`, `Not in a git repository`, `must be a file`, `is not a worktree of`, `is not inside a git worktree` | Do the task yourself directly. |
 | `too large for local regeneration`, `Context too large` | Do the task yourself directly. |
 | `Cannot read`, `Bad line range` | Fix the `context_paths` / `target_path` and retry once. Still failing: do the task yourself. |
 | `Model returned empty output` | Retry once. Still empty: do the task yourself. |
 | `Model output truncated` | Split the task into smaller files, or do it yourself. |
+| `did not start within`, `exited while starting`, `mlx_lm.server not found` | Print the error (it names the log or the install fix). Do the task yourself. |
 | `not reachable`, `timed out` (from `local_llm`) | Print `⚠ local LLM unreachable — falling back to Claude`. Do the task yourself. |
 | `not found — run:` | Print the error (it contains the download command). Do the task yourself. |
 | **any other `local_llm` error**, or a `claude_api` error that does not start with `HTTP `, `Anthropic API`, or `ANTHROPIC_API_KEY` | Do the task yourself directly. Never treat it as quota. |

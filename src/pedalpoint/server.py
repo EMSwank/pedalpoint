@@ -13,7 +13,7 @@ import anthropic
 import httpx
 from mcp.server.fastmcp import Context, FastMCP
 
-from . import backends, drafting, handoff_log, paths
+from . import autostart, backends, drafting, handoff_log, paths
 from .config import Config, get_config
 
 logger = logging.getLogger(__name__)
@@ -29,12 +29,20 @@ async def lifespan(app):  # type: ignore[type-arg]
         try:
             await client.get("/models", timeout=5.0)
         except (httpx.ConnectError, httpx.TimeoutException):
-            logger.warning(
-                f"⚠ {backends.label(cfg)} unreachable at %s. Start it with: %s. "
-                "local_llm calls will fail until it is running.",
-                cfg.base_url,
-                backends.start_hint(cfg),
-            )
+            if autostart.can_autostart(cfg):
+                logger.info(
+                    "MLX not running at %s — it starts on the first local_llm call "
+                    "and stops after %d idle minutes.",
+                    cfg.base_url,
+                    cfg.idle_minutes,
+                )
+            else:
+                logger.warning(
+                    f"⚠ {backends.label(cfg)} unreachable at %s. Start it with: %s. "
+                    "local_llm calls will fail until it is running.",
+                    cfg.base_url,
+                    backends.start_hint(cfg),
+                )
         yield {
             "http": client,
             "cfg": cfg,
@@ -89,6 +97,14 @@ async def _call_local_llm(
         raise ValueError(
             f"HTTP {exc.response.status_code}: {exc.response.text}"
         ) from exc
+
+
+async def _probe(client: httpx.AsyncClient) -> bool:
+    try:
+        resp = await client.get("/models", timeout=2.0)
+    except httpx.HTTPError:
+        return False
+    return resp.status_code == 200
 
 
 Generate = Callable[[str, str], Awaitable[tuple[str, int, int]]]
@@ -245,6 +261,7 @@ async def claude_api(
     target_path: str,
     context_paths: list[str] | None = None,
     system: str = "",
+    worktree: str | None = None,
 ) -> str:
     """Draft `target_path` with the Claude API. Use when circuit is api_fallback.
 
@@ -262,7 +279,7 @@ async def claude_api(
         target_path=target_path,
         context_paths=context_paths or [],
         system=system or DEFAULT_SYSTEM,
-        repo_root=lifespan_ctx.get("repo_root"),
+        repo_root=paths.select_root(lifespan_ctx.get("repo_root"), worktree),
         backend="claude_api",
         model=cfg.api_model,
         cfg=cfg,
@@ -309,6 +326,8 @@ async def local_llm_status(ctx: Context) -> str:
             "reachable": reachable,
             "repo_root": str(repo_root) if repo_root else None,
             "server_version": _server_version(),
+            "autostart": autostart.can_autostart(cfg),
+            "idle_minutes": cfg.idle_minutes,
         }
     )
 
@@ -321,10 +340,13 @@ async def local_llm(
     context_paths: list[str] | None = None,
     system: str | None = None,
     model: str | None = None,
+    worktree: str | None = None,
 ) -> str:
     """Draft `target_path` with the local model; writes `<target_path>.draft`.
 
     Pass context as file paths ("path" or "path:START-END"), not pasted code.
+    Paths are relative to `worktree` (your current working directory, when it
+    is a worktree of this repo) or else to the repo the server started in.
     Returns a JSON summary including `handoff_id` for `record_outcome`.
     """
     lifespan_ctx = ctx.request_context.lifespan_context
@@ -340,17 +362,24 @@ async def local_llm(
             usage.get("completion_tokens", 0),
         )
 
-    result = await _create_draft(
-        generate,
-        task=task,
-        target_path=target_path,
-        context_paths=context_paths or [],
-        system=system or DEFAULT_SYSTEM,
-        repo_root=lifespan_ctx.get("repo_root"),
-        backend=cfg.backend,
-        model=chosen,
-        cfg=cfg,
-    )
+    managed = autostart.can_autostart(cfg)
+    if managed:
+        await autostart.ensure_running(cfg, lambda: _probe(client))
+    try:
+        result = await _create_draft(
+            generate,
+            task=task,
+            target_path=target_path,
+            context_paths=context_paths or [],
+            system=system or DEFAULT_SYSTEM,
+            repo_root=paths.select_root(lifespan_ctx.get("repo_root"), worktree),
+            backend=cfg.backend,
+            model=chosen,
+            cfg=cfg,
+        )
+    finally:
+        if managed:  # a long generation counts as use, not idle time
+            autostart.touch_last_used(autostart.default_state_dir())
     return json.dumps(result)
 
 

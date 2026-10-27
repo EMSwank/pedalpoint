@@ -18,6 +18,45 @@ def find_repo_root(start: Path) -> Path | None:
     return None
 
 
+def git_common_dir(root: Path) -> Path | None:
+    """The `.git` directory every worktree of `root`'s repository shares."""
+    dot_git = root / ".git"
+    if dot_git.is_dir():
+        return dot_git.resolve()
+    try:
+        line = dot_git.read_text().strip()
+    except OSError:
+        return None
+    if not line.startswith("gitdir:"):
+        return None
+    gitdir = (root / line.removeprefix("gitdir:").strip()).resolve()
+    try:
+        common = (gitdir / "commondir").read_text().strip()
+    except OSError:
+        return gitdir
+    return (gitdir / common).resolve()
+
+
+def select_root(pinned: Path | None, worktree: str | None) -> Path | None:
+    """The repo root for one call: the pinned repo, or a worktree of it.
+
+    The server pins the repo it started in; a session that later moves into a
+    worktree names it here. Any worktree of the same repository is allowed
+    (same shared `.git`); anything else is refused.
+    """
+    if worktree is None:
+        return pinned
+    if pinned is None:
+        raise ValueError("Not in a git repository — local_llm needs a project repo")
+    root = find_repo_root(Path(worktree))
+    if root is None:
+        raise ValueError(f"{worktree!r} is not inside a git worktree")
+    common = git_common_dir(root)
+    if common is None or common != git_common_dir(pinned):
+        raise ValueError(f"{worktree!r} is not a worktree of {pinned}")
+    return root
+
+
 def resolve_in_repo(raw: str, root: Path) -> Path:
     """Resolve `raw` (relative to `root`), following symlinks; reject escapes."""
     root = root.resolve()

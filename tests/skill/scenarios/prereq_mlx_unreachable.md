@@ -1,12 +1,12 @@
 # Scenario: Prerequisites — MLX Server Not Running
 
 ## Setup
-- PEDALPOINT_BACKEND=mlx; `mlx_lm.server` not running
+- PEDALPOINT_BACKEND=mlx, PEDALPOINT_AUTOSTART=0; `mlx_lm.server` not running
 - pedalpoint MCP server connected
 
 ## Expected Behavior
 1. Skill calls `local_llm_status`
-2. Result: `{"backend": "mlx", "model": "mlx-community/gemma-4-e4b-it-4bit", "reachable": false, ...}`
+2. Result: `{"backend": "mlx", "model": "mlx-community/gemma-4-e4b-it-4bit", "reachable": false, "autostart": false, ...}`
 3. Skill prints: `⚠ MLX unreachable — start it with: mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit`
 4. All tasks fall back to Agent
 
