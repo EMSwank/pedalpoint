@@ -28,6 +28,8 @@ MCP server + companion superpowers skill. Two deliverables:
 
 Branch on everything, including README and CLAUDE.md changes.
 
+Add user-visible changes to `CHANGELOG.md`, and follow the documentation style in `CONTRIBUTING.md`. `README.md` also renders on PyPI, so its links to repo files must be absolute. Files under `docs/superpowers/` are historical records: don't rewrite them.
+
 ## TDD Workflow
 
 1. Write failing test

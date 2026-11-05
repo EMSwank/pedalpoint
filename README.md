@@ -1,159 +1,292 @@
 # pedalpoint
 
-Route mechanical development tasks to a local LLM (MLX on Apple Silicon, or Ollama) via Claude Code, so your Claude session goes further. Automatically falls back to local-only mode when Claude quota is exhausted.
+[![Latest version on PyPI](https://img.shields.io/pypi/v/pedalpoint?color=2e7d32)](https://pypi.org/project/pedalpoint/) [![Supported Python versions](https://img.shields.io/pypi/pyversions/pedalpoint?color=2e7d32)](https://pypi.org/project/pedalpoint/) [![Test status for the main branch](https://img.shields.io/github/actions/workflow/status/EMSwank/pedalpoint/ci.yml?branch=main&label=tests&color=2e7d32)](https://github.com/EMSwank/pedalpoint/actions/workflows/ci.yml) [![MIT license](https://img.shields.io/github/license/EMSwank/pedalpoint?color=2e7d32)](https://github.com/EMSwank/pedalpoint/blob/main/LICENSE)
 
-## What it does
+**Make your Claude Code usage go further.** pedalpoint hands routine coding tasks to a language model running on your own computer. Claude reviews the result instead of writing it, and you get real numbers showing what that saved.
 
-- **Hybrid routing:** Claude classifies each task. Mechanical work (scaffolding, CRUD, test stubs) goes to your local LLM. Judgment work (architecture, debugging, integration) stays with Claude.
-- **Three-tier quota fallback:** When Claude Pro returns a quota error, pedalpoint first routes judgment and structural tasks to Claude API (pay-per-token) while mechanical tasks continue on local LLM. If the API key is absent or Claude API quota is also exhausted, all tasks fall back to local LLM. Restores to normal when quota recovers.
-- **Context Courier:** Before sending any task to the local LLM, pedalpoint greps your codebase for existing patterns and passes those files to the server. Local LLMs only get tasks they have templates for.
-- **Drafts, not re-typing:** The server writes the local model's output straight to `<file>.draft` (only inside the current git repo). Claude reads it, fixes what's wrong, and promotes it with `mv` — it never re-types the code, which is where the token savings come from.
-- **Proof:** `pedalpoint stats` reports net Claude output tokens saved per model per week, using real token counts from Claude Code transcripts.
-- **Single install:** One script installs the MCP server, pulls the default model, and registers the companion skill.
+It has two parts: a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that talks to your local model, and a Claude Code skill, `/route-tasks`, that decides which tasks to hand off.
+
+## Contents
+
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Usage](#usage)
+- [Routing modes](#routing-modes)
+- [Configuration](#configuration)
+- [Commands](#commands)
+- [Choosing a model](#choosing-a-model)
+- [Measuring savings](#measuring-savings)
+- [Privacy and security](#privacy-and-security)
+- [Troubleshooting](#troubleshooting)
+- [Uninstall](#uninstall)
+- [Contributing](#contributing)
+- [License](#license)
+
+## How it works
+
+Think of the local model as a junior developer and Claude as the senior developer who reviews the work.
+
+1. **Claude sorts each task** in your plan by what it needs.
+
+   | Task type | Examples | Who does it |
+   |---|---|---|
+   | Mechanical | Code that follows a pattern already in your project, test stubs, type hints | Local model drafts, Claude reviews |
+   | Structural | Framework patterns, or tasks fully spelled out in a spec | Local model drafts, Claude reviews |
+   | Judgment | Architecture, debugging, security, unclear requirements | Claude |
+
+   Changes under about 30 lines skip the handoff, because Claude can make them for less than a handoff costs.
+
+2. **Claude finds examples.** It searches your codebase for matching patterns and passes those file paths to the server. If it finds nothing to go on, Claude does the task itself.
+3. **The local model writes a draft.** The server saves it as `<file>.draft`, inside your git repository. It never changes the real file.
+4. **Claude reviews the draft,** fixes what's wrong, and moves it into place with `mv`. Claude never re-types the code, which is where the savings come from.
+5. **Claude scores the draft** from 1 to 7, so `pedalpoint stats` can show whether handoffs are paying off.
+
+### When your Claude usage runs out
+
+pedalpoint keeps working in stages. It rechecks Claude after 60 minutes, doubling the wait after each failed check, and returns to normal once your usage is available again.
+
+| Stage | When it applies | What happens |
+|---|---|---|
+| Normal | Claude is available | Tasks are routed as described above |
+| API fallback | Usage ran out and `ANTHROPIC_API_KEY` is set | Judgment tasks go to the Claude API, billed per token. Other tasks stay on the local model |
+| Local only | Usage ran out with no API key, or the API is out of quota too | All tasks go to the local model with no review. Commits are marked `[unreviewed]`, so check them afterward |
 
 ## Requirements
 
-- Claude Code
-- Python 3.11+
-- Apple Silicon: [mlx-lm](https://github.com/ml-explore/mlx-lm) (installed by the script), or
-- Elsewhere: [Ollama](https://ollama.ai) (or any OpenAI-compatible inference server)
+- [Claude Code](https://code.claude.com/docs)
+- Python 3.11 or newer
+- macOS or Linux, and `curl`
+- [uv](https://docs.astral.sh/uv/), recommended. The installer also works with pipx or pip, but it uses uv to download MLX models
+- A local model server:
+  - On Apple Silicon Macs: [MLX](https://github.com/ml-explore/mlx-lm), which the installer sets up. The default model needs about 4.5GB of memory and 5.2GB of disk space
+  - Anywhere else: [Ollama](https://ollama.com), or another server with an OpenAI-compatible API
 
 ## Install
 
+1. Run the installer:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | sh
+   ```
+
+2. Restart Claude Code.
+3. Check that everything works:
+
+   ```sh
+   pedalpoint doctor
+   ```
+
+   On MLX, a warning that MLX is not running is normal. It starts when it's needed.
+
+To read the script before running it, download it first:
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh -o install.sh
+sh install.sh
 ```
 
-The backend defaults to `mlx` on Apple Silicon and `ollama` elsewhere. To choose explicitly, or use a custom model or endpoint:
+### Installer options
+
+Add options after `sh -s --`, or after `sh install.sh` if you downloaded the script:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | \
-  sh -s -- --backend ollama --model llama3 --base-url http://localhost:11434/v1
+  sh -s -- --backend ollama --model llama3
 ```
 
-Existing installs keep working as Ollama. Re-run with `--backend mlx` to switch.
+| Option | What it sets | Default |
+|---|---|---|
+| `--backend` | `mlx` or `ollama` | Your saved choice, then `mlx` on Apple Silicon and `ollama` elsewhere |
+| `--model` | The local model | See [Choosing a model](#choosing-a-model) |
+| `--base-url` | The model server's address | `http://localhost:8080/v1` for MLX, `http://localhost:11434/v1` for Ollama |
 
-Restart Claude Code after install.
+To remove pedalpoint, see [Uninstall](#uninstall). Run the installer again at any time to upgrade. It keeps your backend, but if you changed the model or address, pass `--model` or `--base-url` again.
 
-> **Note:** If installing without the script, use `uv tool install pedalpoint` — not `pip install -e .`. The tool install puts `pedalpoint-server` in PATH where Claude Code can find it.
+To install without the script, use `uv tool install pedalpoint` rather than `pip install -e .`, so that Claude Code can find `pedalpoint-server`. You'll also need to copy the skill and register the server yourself, so the script is easier.
 
 ## Usage
 
-**MLX starts itself.** The first `local_llm` call starts `mlx_lm.server` (that call takes ~10s longer while the model loads) and it stops after 20 minutes with no calls from any Claude Code session, freeing its ~5GB. A server you start by hand is used as-is and never stopped. Set `PEDALPOINT_AUTOSTART=0` to always manage it yourself:
+Open Claude Code inside a git repository and run this when you're ready to work through an implementation plan:
 
-```sh
-mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit   # backend mlx, manual
-ollama serve                                              # backend ollama (or open Ollama.app)
-```
-
-Ollama already unloads idle models on its own (`OLLAMA_KEEP_ALIVE`, default 5 minutes).
-
-Then in any Claude Code session:
-
-```
+```text
 /route-tasks
 ```
 
-pedalpoint handles routing automatically. No manual flagging needed.
+pedalpoint routes each task for you, with nothing to flag by hand. It also works from a git worktree: drafts land in the worktree you're using.
 
-To verify the MCP server connected:
+### The model server
 
-```sh
-claude mcp get pedalpoint
-```
+**On MLX, there's nothing to start or stop.** The first handoff starts the model server, which adds about 10 seconds to that call. It stops itself after 20 minutes with no handoffs from any Claude Code session, which frees its memory. Several sessions can share it safely.
 
-Should show `Status: ✓ Connected`. If disconnected, run `pedalpoint-server` directly to see the error.
+If you start `mlx_lm.server` yourself, pedalpoint uses that server and never stops it.
 
-## Modes
+**On Ollama,** start Ollama yourself by opening the app or running `ollama serve`. Ollama unloads idle models on its own.
 
-| Mode | Set via | Behavior |
-|---|---|---|
-| `hybrid` | default | Claude classifies each task into mechanical or structural (local draft, Claude reviews inline) or judgment (Agent only). Changes under ~30 lines skip the handoff. |
-| `local-only` | `PEDALPOINT_MODE=local-only` | All tasks → local LLM (use when quota exhausted preemptively) |
-| `passthrough` | `PEDALPOINT_MODE=passthrough` | All tasks → Claude Agent (disables pedalpoint) |
+## Routing modes
+
+To change the mode, set `PEDALPOINT_MODE` in the shell that starts Claude Code. For example: `export PEDALPOINT_MODE=local-only`.
+
+| Mode | What it does |
+|---|---|
+| `hybrid` | Default. Routes each task as described in [How it works](#how-it-works) |
+| `local-only` | Sends every task to the local model. Useful when you know your usage is about to run out |
+| `passthrough` | Sends every task to Claude, which turns pedalpoint off |
 
 ## Configuration
 
-| Variable | Default | Description |
+Most people won't need to change anything.
+
+| Variable | Default | What it does |
 |---|---|---|
-| `PEDALPOINT_BACKEND` | saved choice, else `mlx` on Apple Silicon / `ollama` elsewhere | `mlx` or `ollama`. If unset but `PEDALPOINT_BASE_URL` is set, inferred from the URL (port 11434 → `ollama`). Otherwise read from `~/.pedalpoint/backend`, which `install.sh` writes; re-running the installer keeps it unless you pass `--backend`. |
-| `PEDALPOINT_BASE_URL` | mlx: `http://localhost:8080/v1`; ollama: `http://localhost:11434/v1` | OpenAI-compatible endpoint |
-| `PEDALPOINT_MODEL` | mlx: `mlx-community/gemma-4-e4b-it-4bit`; ollama: `gemma4:12b` | Local model. See [Choosing a model](#choosing-a-model). |
-| `PEDALPOINT_MODE` | `hybrid` | Routing mode |
-| `PEDALPOINT_TIMEOUT` | `120` | Read timeout in seconds |
-| `PEDALPOINT_AUTOSTART` | `1` | MLX only: start `mlx_lm.server` on the first call when it isn't running. `0` to manage it yourself. |
-| `PEDALPOINT_IDLE_MINUTES` | `20` | MLX only: stop an auto-started server after this many minutes without calls from any session. |
-| `PEDALPOINT_MAX_TOKENS` | `8192` | Max tokens per draft. Sent on every request (`mlx_lm.server` defaults to 512). Truncated output is rejected, never written. |
-| `PEDALPOINT_INITIAL_FALLBACK_MINUTES` | `60` | Initial circuit-open duration (doubles on each probe failure) |
+| `PEDALPOINT_BACKEND` | Set by the installer | `mlx` or `ollama` |
+| `PEDALPOINT_BASE_URL` | Set by the installer | Address of the model server. Any OpenAI-compatible server works |
+| `PEDALPOINT_MODEL` | Set by the installer | Local model name |
+| `PEDALPOINT_TIMEOUT` | `120` | Seconds to wait for the model |
+| `PEDALPOINT_AUTOSTART` | `1` | MLX only. Set to `0` to start the model server yourself |
+| `PEDALPOINT_IDLE_MINUTES` | `20` | MLX only. Minutes without a handoff before an automatically started server stops |
+| `PEDALPOINT_MAX_TOKENS` | `8192` | Longest draft allowed, in tokens. Longer output is rejected rather than saved cut short |
+| `PEDALPOINT_CONTEXT_LIMIT` | `16000` | Largest prompt allowed, in estimated tokens. Larger tasks go to Claude |
 | `PEDALPOINT_API_MODEL` | `claude-sonnet-4-6` | Claude model used for API fallback |
-| `ANTHROPIC_API_KEY` | (unset) | Anthropic API key for Claude API fallback tier. Optional — if unset, circuit skips `api_fallback` and goes directly to `open`. |
+| `ANTHROPIC_API_KEY` | Not set | Turns on API fallback. Without it, pedalpoint goes straight to local only |
+
+### Change a setting
+
+For the backend, address and model, re-run the installer with the matching option.
+
+For anything else, export the variable in the shell that starts Claude Code, then restart Claude Code:
+
+```sh
+export PEDALPOINT_IDLE_MINUTES=10
+```
+
+Apps started outside a shell, such as the VS Code app opened from the Dock, may not see those exports. In that case, or to change `PEDALPOINT_TIMEOUT`, save the setting in the server's registration:
+
+```sh
+claude mcp remove pedalpoint -s user
+claude mcp add pedalpoint pedalpoint-server --scope user \
+  -e PEDALPOINT_BACKEND=mlx \
+  -e PEDALPOINT_BASE_URL=http://localhost:8080/v1 \
+  -e PEDALPOINT_MODEL=mlx-community/gemma-4-e4b-it-4bit \
+  -e PEDALPOINT_MODE=hybrid \
+  -e PEDALPOINT_TIMEOUT=120 \
+  -e PEDALPOINT_IDLE_MINUTES=10
+```
+
+Re-running the installer replaces this registration, so add your settings again afterward.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `pedalpoint doctor` | Checks your setup and prints a fix for each problem |
+| `pedalpoint stats` | Shows tokens saved over the last 7 days |
+| `pedalpoint stats --days 30` | Shows tokens saved over a longer period |
+| `pedalpoint --version` | Shows the installed version |
+| `claude mcp get pedalpoint` | Shows whether Claude Code is connected to the server |
 
 ## Choosing a model
 
-Measured on a 16GB M4 MacBook Air with normal apps open (four pedalpoint-style coding tasks, two runs):
+These results come from a 16GB M4 MacBook Air with normal apps open, running four pedalpoint-style coding tasks.
 
-| Model | Backend | Passed | Speed | Memory | Notes |
+| Model | Backend | Tasks passed | Tokens per second | Memory | Notes |
 |---|---|---|---|---|---|
-| `mlx-community/gemma-4-e4b-it-4bit` (default) | MLX | 4/4 · 4/4 | 25–28 tok/s | ~4–4.5GB | Most reliable |
-| `mlx-community/Qwen3.5-4B-MLX-4bit` | MLX | 3/4 · 3/4 | 29 tok/s | ~3GB | Lighter; consistently fumbles test-writing |
-| `gemma4:12b` | Ollama | 4/4 | 9.5 tok/s | ~7.5GB | Accurate but slow; pushes a 16GB Mac into swap |
+| `mlx-community/gemma-4-e4b-it-4bit` (default) | MLX | 4 of 4, in both runs | 25 to 28 | About 4.5GB | Most reliable |
+| `mlx-community/Qwen3.5-4B-MLX-4bit` | MLX | 3 of 4, in both runs | 29 | About 3GB | Lighter, but failed the test-writing task both times |
+| `gemma4:12b` (Ollama default) | Ollama | 4 of 4, in one run | 9.5 | About 7.5GB | Accurate but slow, and pushes a 16GB Mac into swap |
 
-Download a different MLX model with `uvx --from huggingface_hub hf download <repo>`, set `PEDALPOINT_MODEL`, and restart Claude Code (an auto-started server picks up the new model the next time it starts). `pedalpoint stats` shows whether a model pays off on your real work.
+To try another model, run the installer again with `--model` and restart Claude Code. The installer downloads the model for you:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | \
+  sh -s -- --model mlx-community/Qwen3.5-4B-MLX-4bit
+```
+
+`pedalpoint stats` shows how each model does on your real work.
 
 ## Measuring savings
 
 ```sh
-pedalpoint stats            # last 7 days
-pedalpoint stats --days 30
+pedalpoint stats
 ```
 
-For each model and week: handoffs, average score (1–7, what Claude had to do with the draft), redo rate, local tokens, **net Claude output tokens saved**, input overhead, and the share of rows estimated rather than measured. Rows flagged `NOT PAYING OFF` have an average score under 5 or a net saving ≤ 0. Handoffs are logged to `~/.pedalpoint/handoffs.jsonl`.
+The report has one row per model per week. This example is for illustration:
+
+```text
+model                              week      handoffs  avg score  redo %  local tok  net saved  input overhead  est %
+mlx-community/gemma-4-e4b-it-4bit  2026-W45  12        6.1        8%      9400       3100       41000           0%
+```
+
+| Column | Meaning |
+|---|---|
+| `handoffs` | Number of tasks handed to the local model |
+| `avg score` | Average score, from the scale below |
+| `redo %` | Share of drafts scored 1 or 2, meaning Claude started over |
+| `local tok` | Tokens written by the local model |
+| `net saved` | Claude output tokens saved after the cost of each handoff and review. This is the main number |
+| `input overhead` | Tokens Claude read during reviews |
+| `est %` | Share of handoffs estimated because no Claude Code transcript was found |
+
+A row marked `NOT PAYING OFF` has an average score under 5, or saved nothing overall.
+
+| Score | What Claude had to do |
+|---|---|
+| 7 | Accepted the draft as it was |
+| 6 | Fixed 1 to 3 lines |
+| 5 | Made several fixes in the same file |
+| 4 | Rewrote part of it |
+| 3 | Rewrote most of it |
+| 2 | Started over, but the draft helped |
+| 1 | Started over, and the draft didn't help |
+
+## Privacy and security
+
+- **Your code stays on your computer** when the local model handles a task. It only reaches Anthropic through Claude, as usual, or through the Claude API if you turn on API fallback.
+- **The server can only write `.draft` files,** and only inside your project's git repository or one of its worktrees. Claude Code's normal permissions apply when a draft is moved into place.
+- **Records stay local.** Handoffs are logged to `~/.pedalpoint/handoffs.jsonl`, which holds file paths and token counts, not your code.
+- **Unreviewed work is labeled.** In the local-only stage, commits are marked `[unreviewed]`.
+
+To report a vulnerability, see the [security policy](https://github.com/EMSwank/pedalpoint/blob/main/SECURITY.md).
+
+## Troubleshooting
+
+Start with `pedalpoint doctor`, which checks your setup and suggests fixes.
+
+| Problem | Fix |
+|---|---|
+| `/route-tasks` says the `local_llm` tool isn't available | Run `claude mcp get pedalpoint`. If it's missing, run the installer again. If it's disconnected, run `pedalpoint-server` to see the error |
+| The skill says the server is older than the skill | Run the installer again, then restart Claude Code |
+| "MLX not reachable" | Autostart is off, or the address isn't on this computer. Start the server with `mlx_lm.server --model <model>` |
+| "MLX server did not start" or "exited while starting" | Read `~/.pedalpoint/mlx.log` |
+| "mlx_lm.server not found" | Run `uv tool install mlx-lm` |
+| "Ollama not reachable" | Open the Ollama app, or run `ollama serve` |
+| "Model not found" | The error includes the download command |
+| "Model timed out" | Your computer may be short on memory, so close some apps. Claude does that task instead, so no work is lost |
+| "Outside the project repo" or "Not in a git repository" | Start Claude Code from inside your project's git repository |
+| Drafts land in the main checkout instead of your worktree | Run the installer again to update the skill, then restart Claude Code |
+| Tasks stay on the local model after your Claude usage returns | Run `echo '{"circuit":"closed"}' > ~/.pedalpoint/state.json` |
+| "ANTHROPIC_API_KEY not set" | Run `export ANTHROPIC_API_KEY=<your key>`, then restart Claude Code. The key is only needed for API fallback |
 
 ## Uninstall
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | \
+  sh -s -- --uninstall
 ```
 
-## Troubleshooting
+This removes the server, the skill and the package, and asks before deleting `~/.pedalpoint/`. A running model server stops by itself after its idle time.
 
-| Symptom | Fix |
-| :--- | :--- |
-| `local_llm` calls fail with "MLX not reachable" | Autostart is off or the URL isn't local: `mlx_lm.server --model <model>` |
-| "MLX server did not start" / "exited while starting" | Read `~/.pedalpoint/mlx.log` |
-| "mlx_lm.server not found" | `uv tool install mlx-lm` |
-| `local_llm` calls fail with "Ollama not reachable" | `ollama serve` (or open Ollama.app on macOS) |
-| `local_llm` fails with "Model … not found" | The error includes the download command (`hf download …` or `ollama pull …`) |
-| `local_llm` fails with "outside the project repo" or "Not in a git repository" | Start Claude Code from inside the project's git repo |
-| Drafts land in the main checkout instead of your worktree | Update the skill (re-run install.sh): it passes `worktree` so drafts go to the session's current worktree |
-| Anything else | `pedalpoint doctor` |
-| `/route-tasks` says `local_llm` tool not available | `claude mcp get pedalpoint` (check status; if missing, re-run install) |
-| `claude_api` returns "ANTHROPIC_API_KEY not set" — api_fallback tier disabled | `export ANTHROPIC_API_KEY=sk-ant-...` then restart Claude Code |
-| All tasks route to local LLM even after Claude quota resets | `echo '{"circuit":"closed"}' > ~/.pedalpoint/state.json` |
-
-## Development
+Downloaded models and `mlx-lm` stay in place, because other tools may use them. To remove them too:
 
 ```sh
-git clone https://github.com/EMSwank/pedalpoint
-cd pedalpoint
-uv sync --extra dev   # or: pip install -e ".[dev]"
-pytest tests/unit/ -v
+uvx --from huggingface_hub hf cache rm model/mlx-community/gemma-4-e4b-it-4bit
+uv tool uninstall mlx-lm
 ```
 
-Integration tests (require a running model server):
+## Contributing
 
-```sh
-PEDALPOINT_INTEGRATION=true PEDALPOINT_BACKEND=ollama pytest tests/integration/test_ollama.py -v
-PEDALPOINT_INTEGRATION=true PEDALPOINT_BACKEND=mlx pytest tests/integration/test_mlx.py -v
-```
-
-Install script tests (requires [bats-core](https://github.com/bats-core/bats-core)):
-
-```sh
-brew install bats-core   # macOS; use apt-get install bats on Linux
-bats tests/install/
-```
+Contributions are welcome. See the [contributing guide](https://github.com/EMSwank/pedalpoint/blob/main/CONTRIBUTING.md) for setup and testing, the [changelog](https://github.com/EMSwank/pedalpoint/blob/main/CHANGELOG.md) for release history, and the [design history](https://github.com/EMSwank/pedalpoint/blob/main/docs/README.md) for how pedalpoint came to work this way.
 
 ## License
 
-MIT
+pedalpoint is released under the [MIT License](https://github.com/EMSwank/pedalpoint/blob/main/LICENSE).

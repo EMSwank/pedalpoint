@@ -362,6 +362,23 @@ EOF
 
 # ── Uninstall ─────────────────────────────────────────────────────────────────
 
+@test "piped uninstall takes its answer from the terminal, not the script" {
+  mkdir -p "$HOME/.pedalpoint"
+  printf 'y\n' > "$HOME/answer"
+  export PEDALPOINT_TTY="$HOME/answer"
+  run sh -c "cat '$INSTALL_SH' | sh -s -- --uninstall"
+  [ "$status" -eq 0 ]
+  [ ! -d "$HOME/.pedalpoint" ]
+}
+
+@test "uninstall without a terminal keeps ~/.pedalpoint" {
+  mkdir -p "$HOME/.pedalpoint"
+  export PEDALPOINT_TTY="$HOME/no-such-tty"
+  run sh -c "cat '$INSTALL_SH' | sh -s -- --uninstall"
+  [ "$status" -eq 0 ]
+  [ -d "$HOME/.pedalpoint" ]
+}
+
 @test "uninstall removes skill dir" {
   mkdir -p "$HOME/.claude/skills/route-tasks"
   printf '# skill\n' > "$HOME/.claude/skills/route-tasks/SKILL.md"
