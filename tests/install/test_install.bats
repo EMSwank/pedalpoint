@@ -141,7 +141,7 @@ EOF
 @test "registers MCP server via claude mcp add with backend env" {
   run sh "$INSTALL_SH" --backend ollama
   [ "$status" -eq 0 ]
-  grep -q "mcp add pedalpoint pedalpoint-server --scope user" "$HOME/.claude_args"
+  grep -q "mcp add pedalpoint $STUB_DIR/pedalpoint-server --scope user" "$HOME/.claude_args"
   grep -q "PEDALPOINT_BACKEND=ollama" "$HOME/.claude_args"
   grep -q "PEDALPOINT_BASE_URL=http://localhost:11434/v1" "$HOME/.claude_args"
   grep -q "PEDALPOINT_MODEL=gemma4:12b" "$HOME/.claude_args"
@@ -367,6 +367,45 @@ EOF
   [ "$status" -eq 1 ]
   printf '%s\n' "${output}" | grep -q "Python 3.11+ required"
   printf '%s\n' "${output}" | grep -q "docs.astral.sh/uv"
+}
+
+@test "warns when the install folder is not on the user's PATH" {
+  mkdir -p "$HOME/.local/bin"
+  mv "$STUB_DIR/pedalpoint-server" "$STUB_DIR/pedalpoint" "$HOME/.local/bin/"
+  stub_recorder uv
+  export PATH="$STUB_DIR:/usr/bin:/bin"
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q "WARNING: $HOME/.local/bin is not on your PATH"
+  printf '%s\n' "$output" | grep -q "uv tool update-shell"
+  grep -q "mcp add pedalpoint $HOME/.local/bin/pedalpoint-server" "$HOME/.claude_args"
+}
+
+@test "PATH fix suggestion matches the package manager" {
+  mkdir -p "$HOME/.local/bin"
+  mv "$STUB_DIR/pedalpoint-server" "$STUB_DIR/pedalpoint" "$HOME/.local/bin/"
+  hide_uv
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q "pipx ensurepath"
+}
+
+@test "warns when another copy comes first on the user's PATH" {
+  mkdir -p "$HOME/.local/bin"
+  cp "$STUB_DIR/pedalpoint-server" "$HOME/.local/bin/"
+  export PATH="$STUB_DIR:/usr/bin:/bin"
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q "WARNING: another pedalpoint-server comes first"
+  printf '%s\n' "$output" | grep -q "$STUB_DIR/pedalpoint-server"
+  grep -q "mcp add pedalpoint $HOME/.local/bin/pedalpoint-server" "$HOME/.claude_args"
+}
+
+@test "no PATH warning on a normal install" {
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  ! printf '%s\n' "$output" | grep -q "on your PATH"
+  ! printf '%s\n' "$output" | grep -q "comes first"
 }
 
 @test "uv installs with only an old system python" {

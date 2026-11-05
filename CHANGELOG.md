@@ -16,6 +16,10 @@ Notable changes to pedalpoint, newest first. The format follows
 ### Fixed
 
 - Rows with no measured handoffs show a dash for input instead of a false 0.
+- The installer registers the server by its full path, so Claude Code finds it
+  even when the install folder isn't on PATH, and never starts an older copy.
+- The installer warns if the install folder isn't on your PATH, or if another
+  `pedalpoint-server` comes first. It used to report success in both cases.
 - The installer checks for Claude Code before installing or downloading anything.
 - With uv, the installer no longer stops on an old system Python, because uv
   fetches a suitable one. This includes a new Mac, which ships Python 3.9.

@@ -164,7 +164,7 @@ Apps started outside a shell, such as the VS Code app opened from the Dock, may 
 
 ```sh
 claude mcp remove pedalpoint -s user
-claude mcp add pedalpoint pedalpoint-server --scope user \
+claude mcp add pedalpoint "$HOME/.local/bin/pedalpoint-server" --scope user \
   -e PEDALPOINT_BACKEND=mlx \
   -e PEDALPOINT_BASE_URL=http://localhost:8080/v1 \
   -e PEDALPOINT_MODEL=mlx-community/gemma-4-e4b-it-4bit \
@@ -258,6 +258,7 @@ Start with `pedalpoint doctor`, which checks your setup and suggests fixes.
 | Problem | Fix |
 |---|---|
 | `/route-tasks` says the `local_llm` tool isn't available | Run `claude mcp get pedalpoint`. If it's missing, run the installer again. If it's disconnected, run `pedalpoint-server` to see the error |
+| `pedalpoint: command not found` | The install folder isn't on your PATH. The installer prints the fix: usually `uv tool update-shell`, then open a new terminal. Claude Code can still start the server |
 | The skill says the server is older than the skill | Run the installer again, then restart Claude Code |
 | "MLX not reachable" | Autostart is off, or the address isn't on this computer. Start the server with `mlx_lm.server --model <model>` |
 | "MLX server did not start" or "exited while starting" | Read `~/.pedalpoint/mlx.log` |
