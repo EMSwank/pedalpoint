@@ -1,9 +1,6 @@
 # pedalpoint
 
-[![Latest version on PyPI](https://img.shields.io/pypi/v/pedalpoint?color=2e7d32)](https://pypi.org/project/pedalpoint/)
-[![Supported Python versions](https://img.shields.io/pypi/pyversions/pedalpoint?color=2e7d32)](https://pypi.org/project/pedalpoint/)
-[![Test status for the main branch](https://img.shields.io/github/actions/workflow/status/EMSwank/pedalpoint/ci.yml?branch=main&label=tests&color=2e7d32)](https://github.com/EMSwank/pedalpoint/actions/workflows/ci.yml)
-[![MIT license](https://img.shields.io/github/license/EMSwank/pedalpoint?color=2e7d32)](https://github.com/EMSwank/pedalpoint/blob/main/LICENSE)
+[![Latest version on PyPI](https://img.shields.io/pypi/v/pedalpoint?color=2e7d32)](https://pypi.org/project/pedalpoint/) [![Supported Python versions](https://img.shields.io/pypi/pyversions/pedalpoint?color=2e7d32)](https://pypi.org/project/pedalpoint/) [![Test status for the main branch](https://img.shields.io/github/actions/workflow/status/EMSwank/pedalpoint/ci.yml?branch=main&label=tests&color=2e7d32)](https://github.com/EMSwank/pedalpoint/actions/workflows/ci.yml) [![MIT license](https://img.shields.io/github/license/EMSwank/pedalpoint?color=2e7d32)](https://github.com/EMSwank/pedalpoint/blob/main/LICENSE)
 
 **Make your Claude Code usage go further.** pedalpoint hands routine coding tasks to a language model running on your own computer. Claude reviews the result instead of writing it, and you get real numbers showing what that saved.
 
@@ -103,9 +100,8 @@ curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh 
 | `--backend` | `mlx` or `ollama` | Your saved choice, then `mlx` on Apple Silicon and `ollama` elsewhere |
 | `--model` | The local model | See [Choosing a model](#choosing-a-model) |
 | `--base-url` | The model server's address | `http://localhost:8080/v1` for MLX, `http://localhost:11434/v1` for Ollama |
-| `--uninstall` | Removes pedalpoint | Not applicable |
 
-Run the installer again at any time to upgrade. It keeps your backend, but if you changed the model or address, pass `--model` or `--base-url` again.
+To remove pedalpoint, see [Uninstall](#uninstall). Run the installer again at any time to upgrade. It keeps your backend, but if you changed the model or address, pass `--model` or `--base-url` again.
 
 To install without the script, use `uv tool install pedalpoint` rather than `pip install -e .`, so that Claude Code can find `pedalpoint-server`. You'll also need to copy the skill and register the server yourself, so the script is easier.
 
@@ -274,7 +270,8 @@ Start with `pedalpoint doctor`, which checks your setup and suggests fixes.
 ## Uninstall
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/EMSwank/pedalpoint/main/install.sh | \
+  sh -s -- --uninstall
 ```
 
 This removes the server, the skill and the package, and asks before deleting `~/.pedalpoint/`. A running model server stops by itself after its idle time.
