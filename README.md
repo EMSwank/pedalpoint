@@ -55,7 +55,7 @@ pedalpoint keeps working in stages. It rechecks Claude after 60 minutes, doublin
 ## Requirements
 
 - [Claude Code](https://code.claude.com/docs)
-- Python 3.11 or newer
+- Python 3.11 or newer, unless you use uv, which fetches Python for you
 - macOS or Linux, and `curl`
 - [uv](https://docs.astral.sh/uv/), recommended. The installer also works with pipx or pip, but it uses uv to download MLX models
 - A local model server:

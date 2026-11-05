@@ -99,20 +99,37 @@ fi
 
 printf '→ Checking prerequisites...\n'
 
-# Python 3.11+ — try versioned binaries if python3 is too old
-PYTHON3=""
-for _py in python3 python3.13 python3.12 python3.11; do
-  if command -v "$_py" >/dev/null 2>&1 && \
-     "$_py" -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" 2>/dev/null; then
-    PYTHON3="$_py"
-    break
-  fi
-done
-if [ -z "$PYTHON3" ]; then
-  _found=$(python3 --version 2>&1 || printf 'not found')
-  printf 'ERROR: Python 3.11+ required (found: %s). Install Python 3.11+ or add it to PATH.\n' \
-    "$_found" >&2
+# Claude Code — check before installing or downloading anything
+if ! command -v claude >/dev/null 2>&1; then
+  printf 'ERROR: claude CLI not found. Install Claude Code first: https://code.claude.com/docs\n' >&2
   exit 1
+fi
+
+# Package manager
+if command -v uv >/dev/null 2>&1; then
+  PKG_MGR="uv"
+elif command -v pipx >/dev/null 2>&1; then
+  PKG_MGR="pipx"
+else
+  PKG_MGR="pip"
+fi
+
+# Python 3.11+ — uv fetches its own; otherwise try versioned binaries too
+if [ "$PKG_MGR" != "uv" ]; then
+  PYTHON3=""
+  for _py in python3 python3.13 python3.12 python3.11; do
+    if command -v "$_py" >/dev/null 2>&1 && \
+       "$_py" -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" 2>/dev/null; then
+      PYTHON3="$_py"
+      break
+    fi
+  done
+  if [ -z "$PYTHON3" ]; then
+    _found=$(python3 --version 2>&1 || printf 'not found')
+    printf 'ERROR: Python 3.11+ required (found: %s).\n' "$_found" >&2
+    printf '  Install uv, which fetches Python for you: https://docs.astral.sh/uv/\n' >&2
+    exit 1
+  fi
 fi
 
 # curl or git (needed for install itself)
@@ -137,15 +154,6 @@ if [ "$PEDALPOINT_BACKEND" = "ollama" ]; then
   else
     printf 'WARNING: ollama CLI not found — model pull will be skipped.\n'
   fi
-fi
-
-# ── Step 2: Detect package manager ──────────────────────────────────────────
-if command -v uv >/dev/null 2>&1; then
-  PKG_MGR="uv"
-elif command -v pipx >/dev/null 2>&1; then
-  PKG_MGR="pipx"
-else
-  PKG_MGR="pip"
 fi
 
 # ── Step 3: Install Python package ──────────────────────────────────────────
@@ -220,11 +228,6 @@ fi
 
 # ── Step 7: Register MCP server ─────────────────────────────────────────────
 printf '→ Registering MCP server via claude mcp add...\n'
-
-if ! command -v claude >/dev/null 2>&1; then
-  printf 'ERROR: claude CLI not found — install Claude Code first.\n' >&2
-  exit 1
-fi
 
 claude mcp remove pedalpoint -s user 2>/dev/null || true
 claude mcp add pedalpoint pedalpoint-server --scope user \
