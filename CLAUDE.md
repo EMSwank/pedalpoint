@@ -13,7 +13,7 @@ MCP server + companion superpowers skill. Two deliverables:
 - **Backends:** `PEDALPOINT_BACKEND=mlx|ollama`. Both speak OpenAI `/v1/chat/completions`; backend only changes defaults, hint text, and the "thinking off" request field (`backends.py`).
 - **Three-tier routing (junior/senior model):** Local LLM = junior dev, Claude = senior dev. Mechanical and structural tasks get a local `.draft` that Claude reviews inline (no review subagent) and scores 1–7 via `record_outcome`. Judgment tasks (architecture, debugging, security) go to Agent only. Changes under ~30 lines skip the handoff.
 - **No streaming:** `local_llm` waits for the full completion. Simpler, sufficient for code gen.
-- **Savings metrics:** `pedalpoint stats` joins `~/.pedalpoint/handoffs.jsonl` with Claude Code transcripts (`~/.claude/projects/*/*.jsonl`, undocumented format — parse defensively) for real per-handoff Claude cost.
+- **Savings metrics:** `pedalpoint stats` joins `~/.pedalpoint/handoffs.jsonl` with Claude Code transcripts (`~/.claude/projects/*/*.jsonl`, undocumented format — parse defensively) for real per-handoff Claude cost. Input stays beside the verdict, split into new and cached, and is never weighted into it: Anthropic doesn't publish how plan limits count them.
 - **Circuit breaker in skill:** Claude reads/writes state.json via Write tool. Python `circuit_breaker.py` module contains the pure functions that document and validate this logic.
 - **Context Courier:** Skill MUST grep codebase before sending any task to local LLM. Empty grep result = escalate to Agent.
 

@@ -219,3 +219,21 @@ def test_real_claude_code_transcript(tmp_path: Path) -> None:
     assert cost.call_output == 513
     assert cost.review_output > 0
     assert cost.review_input > 0
+
+
+def test_cached_input_counted_separately_on_real_data(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "claude_code_handoff.jsonl"
+    proj = tmp_path / "-Users-me-proj"
+    proj.mkdir()
+    (proj / "s1.jsonl").write_text(fixture.read_text())
+    cost = handoff_costs({"8efa223b0946"}, tmp_path)["8efa223b0946"]
+    assert cost.review_input == 577225
+    assert cost.review_cached == 575635
+
+
+def test_unclosed_handoff_keeps_cached_input(tmp_path: Path) -> None:
+    entries = _session()[:3] + [_assistant("r9", 5, 0)]
+    entries[-1]["message"]["usage"]["cache_read_input_tokens"] = 700
+    _write(tmp_path, entries)
+    cost = handoff_costs({"h1"}, tmp_path)["h1"]
+    assert (cost.complete, cost.review_cached) == (False, 700)

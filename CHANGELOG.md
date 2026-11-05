@@ -4,6 +4,19 @@ Notable changes to pedalpoint, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- `pedalpoint stats` shows new and cached input in separate columns, beside the
+  output tokens saved. The `net saved` column is now `output saved`, and
+  `input overhead` is replaced by `new input` and `cached input`.
+- A note under the report says the verdict covers output tokens and scores only.
+
+### Fixed
+
+- Rows with no measured handoffs show a dash for input instead of a false 0.
+
 ## 0.5.2 - 2026-11-05
 
 ### Fixed
