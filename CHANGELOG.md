@@ -4,6 +4,13 @@ Notable changes to pedalpoint, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.2 - 2026-11-05
+
+### Fixed
+
+- `pedalpoint stats` now finds handoffs in real Claude Code transcripts. Until
+  now it never matched them, so every number it reported was an estimate.
+
 ## 0.5.1 - 2026-11-04
 
 ### Fixed

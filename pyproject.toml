@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pedalpoint"
-version = "0.5.1"
+version = "0.5.2"
 description = "Hand routine Claude Code tasks to a local model, and measure the tokens saved"
 readme = "README.md"
 requires-python = ">=3.11"
