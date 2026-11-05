@@ -10,9 +10,16 @@ _RANGE = re.compile(r"^(?P<path>.+):(?P<start>\w+)-(?P<end>\w+)$")
 
 
 def find_repo_root(start: Path) -> Path | None:
-    """Return the nearest ancestor containing `.git` (dir or worktree file)."""
+    """Return the nearest ancestor containing `.git` (dir or worktree file).
+
+    A dotfiles repo at $HOME does not count for projects below it: pinning it
+    would open every folder in the home directory to reads and drafts.
+    """
     current = start.resolve()
+    home = Path.home().resolve()
     for candidate in (current, *current.parents):
+        if candidate == home and current != home:
+            return None
         if (candidate / ".git").exists():
             return candidate
     return None

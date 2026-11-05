@@ -168,7 +168,7 @@ Start on a branch: `git checkout -b feat/<task-slug>` (or appropriate prefix).
 2. Read `<target>.draft`. Review it against the task.
 3. Fix what's wrong with Edit on the `.draft` (or rewrite it if it's mostly wrong).
    - **Judgment task in disguise** (security-sensitive, needs design decisions): `rm <target>.draft`, `record_outcome(handoff_id, 1, "<reason>")`, then run the judgment path.
-4. Promote: `mv <target>.draft <target>`
+4. Promote: `mv <draft_path> <draft_path minus .draft>`, using `draft_path` from the result (for a symlinked target it sits next to the real file, not the link).
 5. Run the test suite: `pytest tests/ -x -q`
 6. If tests fail:
    - **Trivial** (fix inline): single-line syntax error, missing import whose usage is already present in the file, typo in variable/function name → fix inline, re-run pytest once
@@ -195,7 +195,7 @@ Mechanical and structural tasks use the local path above unchanged. Judgment tas
 ### Open-circuit path (circuit `open` — Claude quota exhausted)
 
 1. Call `local_llm(task, target_path, context_paths, worktree)` (skip rule OFF).
-2. No review: `mv <target>.draft <target>`
+2. No review: `mv <draft_path> <draft_path minus .draft>`
 3. Run `pytest tests/ -x -q`; trivial failures fixed inline only if possible without review.
 4. Commit with `[unreviewed]` in the message.
 5. Append a "task rerouted" entry to `~/.pedalpoint/fallback-log.md` (format below). Do NOT call `record_outcome`.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import signal
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from importlib.metadata import PackageNotFoundError, version
 
 from pedalpoint import autostart, handoff_log, stats, transcripts
@@ -23,8 +23,10 @@ def _cmd_doctor(_args: argparse.Namespace) -> int:
 
 def _cmd_stats(args: argparse.Namespace) -> int:
     handoffs = stats.join_records(handoff_log.read_all())
-    costs = transcripts.handoff_costs({h.handoff_id for h in handoffs})
-    rows = stats.summarize(handoffs, costs, datetime.now(UTC), args.days)
+    now = datetime.now(UTC)
+    since = (now - timedelta(days=args.days)).timestamp()
+    costs = transcripts.handoff_costs({h.handoff_id for h in handoffs}, since=since)
+    rows = stats.summarize(handoffs, costs, now, args.days)
     print(stats.format_rows(rows, args.days))
     return 0
 

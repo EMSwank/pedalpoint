@@ -202,8 +202,19 @@ else
   printf 'WARNING: could not determine pedalpoint version — using skill from main.\n'
 fi
 mkdir -p "${SKILL_DIR}"
-curl -fsSL "${PEDALPOINT_REPO_RAW}/${SKILL_REF}/skills/route-tasks/SKILL.md" \
-  -o "${SKILL_DIR}/SKILL.md"
+fetch_skill() {
+  curl -fsSL "${PEDALPOINT_REPO_RAW}/$1/skills/route-tasks/SKILL.md" \
+    -o "${SKILL_DIR}/SKILL.md"
+}
+if ! fetch_skill "$SKILL_REF"; then
+  if [ "$SKILL_REF" = "main" ] || ! {
+    printf 'WARNING: no skill for %s — using skill from main.\n' "$SKILL_REF"
+    fetch_skill main
+  }; then
+    printf 'ERROR: could not download the skill from %s.\n' "$PEDALPOINT_REPO_RAW" >&2
+    exit 1
+  fi
+fi
 
 # ── Step 7: Register MCP server ─────────────────────────────────────────────
 printf '→ Registering MCP server via claude mcp add...\n'

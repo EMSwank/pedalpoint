@@ -65,6 +65,7 @@ def _scan(path: Path, wanted: set[str], found: dict[str, HandoffCost]) -> None:
     seen_requests: set[str] = set()
     open_: dict[str, list[int]] = {}  # hid -> [call_output, review_out, review_in]
     pending_calls: dict[str, int] = {}  # tool_use_id -> output of issuing request
+    charged_requests: set[str] = set()  # a request's output is charged to one call
 
     for entry in _entries(path):
         if entry.get("type") == "assistant":
@@ -91,7 +92,10 @@ def _scan(path: Path, wanted: set[str], found: dict[str, HandoffCost]) -> None:
                     continue
                 name = str(block.get("name", ""))
                 if name.endswith(_CALL_TOOLS):
-                    pending_calls[str(block.get("id"))] = out
+                    pending_calls[str(block.get("id"))] = (
+                        0 if req in charged_requests else out
+                    )
+                    charged_requests.add(req)
                 elif name.endswith(_OUTCOME_TOOL):
                     hid = (block.get("input") or {}).get("handoff_id")
                     if hid in open_:
@@ -104,21 +108,36 @@ def _scan(path: Path, wanted: set[str], found: dict[str, HandoffCost]) -> None:
                     continue
                 match = _HANDOFF_ID.search(_result_text(block))
                 hid = match.group(1) if match else None
-                if hid in wanted and hid not in found:
+                # A resumed session repeats history: an unfinished copy of a
+                # handoff must not block the copy that reaches its outcome.
+                done = hid in found and found[hid].complete
+                if hid in wanted and not done:
                     open_[hid] = [pending_calls[tool_id], 0, 0]
 
     for hid, (call, rev_out, rev_in) in open_.items():
         found.setdefault(hid, HandoffCost(call, rev_out, rev_in, False))
 
 
+def _modified_before(path: Path, since: float) -> bool:
+    try:
+        return path.stat().st_mtime < since
+    except OSError:
+        return True
+
+
 def handoff_costs(
-    handoff_ids: set[str], root: Path | None = None
+    handoff_ids: set[str], root: Path | None = None, since: float | None = None
 ) -> dict[str, HandoffCost]:
-    """Map each handoff id found in any transcript to its Claude token cost."""
+    """Map each handoff id found in any transcript to its Claude token cost.
+
+    Transcripts last written before `since` (a timestamp) are skipped.
+    """
     root = root or projects_dir()
     found: dict[str, HandoffCost] = {}
     if not root.is_dir() or not handoff_ids:
         return found
-    for path in sorted(root.glob("*/*.jsonl")):
-        _scan(path, handoff_ids, found)
+    # rglob: subagent transcripts sit at <project>/<session>/subagents/*.jsonl
+    for path in sorted(root.rglob("*.jsonl")):
+        if since is None or not _modified_before(path, since):
+            _scan(path, handoff_ids, found)
     return found

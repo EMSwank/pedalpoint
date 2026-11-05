@@ -88,6 +88,39 @@ teardown() {
   [ -f "$HOME/.claude/skills/route-tasks/SKILL.md" ]
 }
 
+@test "missing release tag falls back to the skill on main with a warning" {
+  cat > "$STUB_DIR/pedalpoint" <<'EOF'
+#!/bin/sh
+echo "pedalpoint 9.9.9"
+EOF
+  chmod +x "$STUB_DIR/pedalpoint"
+  cat > "$STUB_DIR/curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HOME/.curl_args"
+case "$*" in
+  */v9.9.9/*) exit 22 ;;
+esac
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then printf 'skill\n' > "$arg"; fi
+  prev="$arg"
+done
+exit 0
+EOF
+  chmod +x "$STUB_DIR/curl"
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  grep -q "/main/skills/route-tasks/SKILL.md" "$HOME/.curl_args"
+  printf '%s\n' "$output" | grep -q "WARNING: no skill for v9.9.9"
+}
+
+@test "skill download failure says why before aborting" {
+  printf '#!/bin/sh\nexit 22\n' > "$STUB_DIR/curl"
+  chmod +x "$STUB_DIR/curl"
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -ne 0 ]
+  printf '%s\n' "$output" | grep -q "ERROR: could not download the skill"
+}
+
 @test "skill download curl failure aborts install" {
   # curl -f returns 22 on HTTP error; set -e in install.sh aborts on non-zero
   printf '#!/bin/sh\nexit 22\n' > "$STUB_DIR/curl"

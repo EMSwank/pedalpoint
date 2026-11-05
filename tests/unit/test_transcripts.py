@@ -161,3 +161,46 @@ def test_malformed_entries_tolerated(tmp_path: Path) -> None:
     _write(tmp_path, entries)
     (tmp_path / "-Users-me-proj" / "dir.jsonl").mkdir()  # unreadable as a file
     assert handoff_costs({"h1"}, tmp_path)["h1"] == HandoffCost(80, 90, 2500, True)
+
+
+def test_complete_copy_beats_earlier_incomplete_copy(tmp_path: Path) -> None:
+    # A resumed session: the old file stops mid-handoff, the new one finishes it.
+    _write(tmp_path, _session()[:4], name="a.jsonl")
+    _write(tmp_path, _session(), name="b.jsonl")
+    assert handoff_costs({"h1"}, tmp_path)["h1"].complete is True
+
+
+def test_subagent_transcripts_are_scanned(tmp_path: Path) -> None:
+    sub = tmp_path / "-Users-me-proj" / "session-1" / "subagents"
+    sub.mkdir(parents=True)
+    (sub / "agent-a.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in _session()) + "\n"
+    )
+    assert handoff_costs({"h1"}, tmp_path)["h1"].complete is True
+
+
+def test_two_calls_in_one_request_charge_it_once(tmp_path: Path) -> None:
+    both = [
+        _tool_use("t1", "mcp__pedalpoint__local_llm"),
+        _tool_use("t2", "mcp__pedalpoint__local_llm"),
+    ]
+    _write(
+        tmp_path,
+        [
+            _assistant("r1", 80, 10, both),
+            _result("t1", json.dumps({"handoff_id": "a"})),
+            _result("t2", json.dumps({"handoff_id": "b"})),
+        ],
+    )
+    costs = handoff_costs({"a", "b"}, tmp_path)
+    assert costs["a"].call_output + costs["b"].call_output == 80
+
+
+def test_old_transcripts_skipped_with_since(tmp_path: Path) -> None:
+    import os
+
+    _write(tmp_path, _session())
+    path = tmp_path / "-Users-me-proj" / "s1.jsonl"
+    os.utime(path, (1000, 1000))
+    assert handoff_costs({"h1"}, tmp_path, since=2000) == {}
+    assert "h1" in handoff_costs({"h1"}, tmp_path, since=500)
