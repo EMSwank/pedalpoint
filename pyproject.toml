@@ -5,15 +5,34 @@ build-backend = "hatchling.build"
 [project]
 name = "pedalpoint"
 version = "0.5.1"
-description = "MCP server that routes mechanical dev tasks to a local LLM"
+description = "Hand routine Claude Code tasks to a local model, and measure the tokens saved"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Eliot Swank" }]
+keywords = ["claude-code", "mcp", "llm", "mlx", "ollama", "local-llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+]
 dependencies = [
     "mcp>=1.0.0,<2",
     "httpx>=0.27.0,<1",
     "anthropic>=0.52,<3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/EMSwank/pedalpoint"
+Changelog = "https://github.com/EMSwank/pedalpoint/blob/main/CHANGELOG.md"
+Issues = "https://github.com/EMSwank/pedalpoint/issues"
 
 [project.scripts]
 pedalpoint-server = "pedalpoint.server:main"

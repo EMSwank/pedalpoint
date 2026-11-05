@@ -82,8 +82,10 @@ if [ "$UNINSTALL" = "1" ]; then
   printf '✓ Package uninstalled\n'
 
   # Prompt before removing state
-  printf '\nRemove ~/.pedalpoint/ (fallback logs and state)? [y/N] '
-  read -r answer
+  printf '\nRemove ~/.pedalpoint/ (state, logs and savings history)? [y/N] '
+  # Under `curl | sh`, stdin is this script, so the answer must come from the tty.
+  answer=""
+  { read -r answer <"${PEDALPOINT_TTY:-/dev/tty}"; } 2>/dev/null || true
   case "$answer" in
     [Yy]*) rm -rf "$STATE_DIR"; printf '✓ Removed %s\n' "$STATE_DIR" ;;
     *)     printf '→ Kept %s\n' "$STATE_DIR" ;;
