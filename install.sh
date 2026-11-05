@@ -164,7 +164,9 @@ case "$PKG_MGR" in
   pip)  pip install --user --upgrade pedalpoint ;;
 esac
 
-# ── Step 3.5: Verify server binary is in PATH ────────────────────────────────
+# ── Step 3.5: Find the installed server ─────────────────────────────────────
+# Only this script sees the PATH change below, so remember the user's own.
+USER_PATH="$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 if ! command -v pedalpoint-server >/dev/null 2>&1; then
   printf 'ERROR: pedalpoint-server not found in PATH after install.\n' >&2
@@ -172,7 +174,9 @@ if ! command -v pedalpoint-server >/dev/null 2>&1; then
   printf '  Then restart your shell and re-run this script.\n' >&2
   exit 1
 fi
-printf '✓ pedalpoint-server in PATH: %s\n' "$(command -v pedalpoint-server)"
+SERVER_PATH=$(command -v pedalpoint-server)
+USER_SERVER=$(PATH="$USER_PATH"; command -v pedalpoint-server 2>/dev/null) || true
+printf '✓ pedalpoint-server installed: %s\n' "$SERVER_PATH"
 
 # ── Step 4: Get the model ────────────────────────────────────────────────────
 if [ "$PEDALPOINT_BACKEND" = "mlx" ]; then
@@ -230,7 +234,9 @@ fi
 printf '→ Registering MCP server via claude mcp add...\n'
 
 claude mcp remove pedalpoint -s user 2>/dev/null || true
-claude mcp add pedalpoint pedalpoint-server --scope user \
+# Full path: Claude Code's PATH may not include the install folder, or may find
+# an older copy first.
+claude mcp add pedalpoint "$SERVER_PATH" --scope user \
   -e "PEDALPOINT_BACKEND=${PEDALPOINT_BACKEND}" \
   -e "PEDALPOINT_BASE_URL=${PEDALPOINT_BASE_URL}" \
   -e "PEDALPOINT_MODEL=${PEDALPOINT_MODEL}" \
@@ -244,7 +250,7 @@ printf '%s\n' "$PEDALPOINT_BACKEND" > "${STATE_DIR}/backend"
 # ── Step 9: Summary ──────────────────────────────────────────────────────────
 printf '\n'
 printf '✓ pedalpoint installed!\n'
-printf '✓ MCP server:  pedalpoint-server (user scope)\n'
+printf '✓ MCP server:  %s (user scope)\n' "$SERVER_PATH"
 printf '✓ Skill:       /route-tasks\n'
 printf '✓ State dir:   %s\n' "$STATE_DIR"
 printf '✓ Backend:     %s (%s)\n' "$PEDALPOINT_BACKEND" "$PEDALPOINT_MODEL"
@@ -252,6 +258,21 @@ printf '\n'
 if [ "$PEDALPOINT_BACKEND" = "mlx" ]; then
   printf '→ MLX starts automatically on first use and stops after 20 idle minutes\n'
   printf '  (set PEDALPOINT_IDLE_MINUTES, or PEDALPOINT_AUTOSTART=0 to manage it yourself).\n'
+fi
+if [ -z "$USER_SERVER" ]; then
+  case "$PKG_MGR" in
+    uv)   PATH_FIX='uv tool update-shell' ;;
+    pipx) PATH_FIX='pipx ensurepath' ;;
+    pip)  PATH_FIX="add $(dirname "$SERVER_PATH") to PATH in your shell profile" ;;
+  esac
+  printf 'WARNING: %s is not on your PATH, so the pedalpoint command won'"'"'t work\n' \
+    "$(dirname "$SERVER_PATH")"
+  printf '  in a new terminal. Claude Code can still start the server.\n'
+  printf '  To fix it: %s\n' "$PATH_FIX"
+elif [ "$USER_SERVER" != "$SERVER_PATH" ]; then
+  printf 'WARNING: another pedalpoint-server comes first on your PATH: %s\n' "$USER_SERVER"
+  printf '  Claude Code uses the new one, but the pedalpoint command may run the old\n'
+  printf '  copy. Remove it, or put %s earlier on your PATH.\n' "$(dirname "$SERVER_PATH")"
 fi
 printf '→ Restart Claude Code to activate.\n'
 printf '→ Then invoke: /route-tasks\n'
