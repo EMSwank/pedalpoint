@@ -94,7 +94,7 @@ CLOSED state: `{"circuit": "closed"}` or file absent.
 - `{"kind": "call", "handoff_id", "ts", "repo", "backend", "model", "target", "draft_path", "lines", "lines_changed", "changed_tokens", "prompt_tokens", "completion_tokens", "seconds"}`
 - `{"kind": "outcome", "handoff_id", "ts", "score", "note"}`
 
-API_FALLBACK state: same schema as OPEN but `"circuit": "api_fallback"`. Judgment/structural tasks route to `claude_api`; mechanical tasks still use local_llm.
+API_FALLBACK state: same schema as OPEN but `"circuit": "api_fallback"`. Judgment tasks route to `claude_api`; mechanical and structural tasks still use local_llm.
 
 ## Common Gotchas
 

@@ -903,3 +903,57 @@ async def test_claude_api_accepts_worktree(repo: Path) -> None:
             await claude_api(ctx, "write x", "src/x.py", worktree=str(repo / "src"))
         )
     assert result["draft_path"] == str(repo / "src" / "x.py.draft")
+
+
+# ── deferred minors ─────────────────────────────────────────────────────────
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_null_content_is_empty_output() -> None:
+    respx.post("http://localhost:11434/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": None}}]}
+        )
+    )
+    async with httpx.AsyncClient(base_url="http://localhost:11434/v1") as client:
+        text, _ = await _call_local_llm(client, "p", None, "m", TEST_CFG)
+    assert text == ""
+
+
+@pytest.mark.asyncio
+async def test_create_draft_whole_file_context(repo: Path) -> None:
+    (repo / "src" / "ctx.py").write_text("WHOLE = 1\n")
+    prompts: list[str] = []
+    await _create_draft(
+        _fake_generate("x = 1\n", prompts),
+        task="t",
+        target_path="src/new.py",
+        context_paths=["src/ctx.py"],
+        system="s",
+        repo_root=repo,
+        backend="ollama",
+        model="m",
+        cfg=TEST_CFG,
+    )
+    assert "## Context: src/ctx.py\n" in prompts[0]
+    assert "WHOLE = 1" in prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_create_draft_range_past_end_of_file_raises(repo: Path) -> None:
+    (repo / "src" / "ctx.py").write_text("a = 1\nb = 2\n")
+    with pytest.raises(ValueError, match=r"Bad line range.*has 2 lines"):
+        await _draft(repo, "x = 1\n", context_paths=["src/ctx.py:500-510"])
+
+
+@pytest.mark.asyncio
+async def test_create_draft_huge_file_refused_before_reading(
+    repo: Path, monkeypatch
+) -> None:
+    import pedalpoint.server as server
+
+    monkeypatch.setattr(server, "MAX_READ_BYTES", 10)
+    (repo / "src" / "big.py").write_text("x = 1\n" * 10)
+    with pytest.raises(ValueError, match="Cannot read 'src/big.py': .*too large"):
+        await _draft(repo, "x = 1\n", target_path="src/big.py")

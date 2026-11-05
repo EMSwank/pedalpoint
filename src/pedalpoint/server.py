@@ -79,7 +79,7 @@ async def _call_local_llm(
                 f"Model output truncated (max_tokens={cfg.max_tokens}) — "
                 "raise PEDALPOINT_MAX_TOKENS or split the task"
             )
-        return choice["message"]["content"], body.get("usage") or {}
+        return choice["message"]["content"] or "", body.get("usage") or {}
     except httpx.ConnectError:
         raise ValueError(
             f"{backends.label(cfg)} not reachable at {cfg.base_url} — is it running? "
@@ -109,6 +109,8 @@ async def _probe(client: httpx.AsyncClient) -> bool:
 
 Generate = Callable[[str, str], Awaitable[tuple[str, int, int]]]
 
+MAX_READ_BYTES = 2_000_000
+
 DEFAULT_SYSTEM = (
     "You are a code generator. Follow the provided patterns exactly. "
     "Output only code. No explanation."
@@ -125,6 +127,9 @@ def _server_version() -> str:
 def _read_text(path: Path, shown: str) -> str:
     """Read a repo file; file problems become a ValueError the skill recognizes."""
     try:
+        size = path.stat().st_size
+        if size > MAX_READ_BYTES:
+            raise ValueError(f"Cannot read {shown!r}: file too large ({size} bytes)")
         return path.read_text()
     except (OSError, UnicodeDecodeError) as exc:
         raise ValueError(f"Cannot read {shown!r}: {exc}") from None
@@ -135,8 +140,10 @@ def _read_context(spec: str, root: Path) -> tuple[str, str]:
     text = _read_text(paths.resolve_in_repo(raw, root), raw)
     if first is None:
         return raw, text
-    lines = text.splitlines()[first - 1 : last]
-    return f"{raw} lines {first}-{last}", "\n".join(lines)
+    lines = text.splitlines()
+    if first > len(lines):
+        raise ValueError(f"Bad line range in {spec!r}: {raw} has {len(lines)} lines")
+    return f"{raw} lines {first}-{last}", "\n".join(lines[first - 1 : last])
 
 
 def _is_unfenced_non_python(target: Path, raw: str, code: str) -> bool:

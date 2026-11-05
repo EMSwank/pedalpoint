@@ -210,3 +210,15 @@ def test_git_common_dir_gitdir_without_commondir(tmp_path: Path) -> None:
     (tmp_path / "wt").mkdir()
     (tmp_path / "wt" / ".git").write_text("gitdir: ../real\n")
     assert git_common_dir(tmp_path / "wt") == (tmp_path / "real").resolve()
+
+
+def test_find_repo_root_skips_a_home_directory_repo(
+    monkeypatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "me"
+    (home / ".git").mkdir(parents=True)
+    project = home / "dev" / "plain"
+    project.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    assert find_repo_root(project) is None
+    assert find_repo_root(home) == home.resolve()

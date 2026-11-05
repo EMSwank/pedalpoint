@@ -9,7 +9,12 @@ from pathlib import Path
 
 MAX_EDIT_LINES = 300
 
-_THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+# Thinking comes first in a reply; `<think>` later on may be the code itself.
+_THINK = re.compile(r"\A\s*<think>.*?(?:</think>|\Z)", re.DOTALL)
+# Real fences sit alone on their line; ``` inside a string literal does not.
+_FENCE_LINE = re.compile(
+    r"^```[\w+-]*[ \t]*\n(.*?)^```[ \t]*$", re.DOTALL | re.MULTILINE
+)
 _FENCE = re.compile(r"```[\w+-]*[ \t]*\n(.*?)```", re.DOTALL)
 _OUTER_FENCE = re.compile(r"\A```[\w+-]*[ \t]*\n(.*)\n```\Z", re.DOTALL)
 _PROSE_SUFFIXES = {".md", ".markdown", ".rst", ".txt"}
@@ -35,7 +40,7 @@ def strip_output(text: str, prose_target: bool = False) -> str:
         outer = _OUTER_FENCE.match(text)
         body = outer.group(1) if outer else text
     else:
-        blocks = _FENCE.findall(text)
+        blocks = _FENCE_LINE.findall(text) or _FENCE.findall(text)
         body = max(blocks, key=len) if blocks else text
     body = body.strip()
     return body + "\n" if body else ""
@@ -58,9 +63,12 @@ def change_size(original: str | None, draft: str) -> tuple[int, int]:
     """Return (lines_changed, changed_tokens) — what Claude would have written."""
     if original is None:
         return len(draft.splitlines()), estimate_tokens(draft)
+    old, new = original.splitlines(), draft.splitlines()
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
     added = [
-        line[2:]
-        for line in difflib.ndiff(original.splitlines(), draft.splitlines())
-        if line.startswith("+ ")
+        line
+        for tag, _, _, start, end in matcher.get_opcodes()
+        if tag in ("replace", "insert")
+        for line in new[start:end]
     ]
     return len(added), estimate_tokens("\n".join(added))

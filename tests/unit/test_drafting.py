@@ -91,3 +91,36 @@ def test_is_prose_target() -> None:
 
     assert is_prose_target("README.md") and is_prose_target("docs/x.rst")
     assert not is_prose_target("src/a.py")
+
+
+def test_strip_output_ignores_fence_markers_inside_code() -> None:
+    source = 'a = "```python\\nprint(1)\\n```"\nb = 2\n'
+    assert strip_output(f"```python\n{source}```") == source
+
+
+def test_strip_output_keeps_think_tags_inside_code() -> None:
+    source = 's = "<think>x</think>"\n'
+    assert strip_output(f"```python\n{source}```") == source
+    assert strip_output(source) == source
+
+
+def test_strip_output_leading_unclosed_think_is_empty() -> None:
+    assert strip_output("<think>never finished") == ""
+
+
+def test_strip_output_fence_opened_mid_line_still_unwrapped() -> None:
+    assert strip_output("Here: ```python\nx = 1\n```") == "x = 1\n"
+
+
+def test_change_size_fast_on_full_rewrite() -> None:
+    import time
+
+    # Similar-but-different lines are ndiff's slow path.
+    original = "".join(
+        f"result_{i} = compute_value({i}, 'old', x)\n" for i in range(300)
+    )
+    draft = "".join(f"result_{i} = compute_value({i}, 'new', y)\n" for i in range(300))
+    started = time.monotonic()
+    lines, _ = change_size(original, draft)
+    assert lines == 300
+    assert time.monotonic() - started < 1
