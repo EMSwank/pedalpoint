@@ -3,6 +3,9 @@
 Avoided = changed_tokens (what Claude would have written doing the task itself).
 Cost    = Claude output spent issuing the call + reviewing/fixing the draft,
           measured from transcripts when possible, else estimated from the score.
+
+Input is reported beside that, never folded in: Anthropic doesn't publish how plan
+limits weigh new and cached input, so any single score would rest on a guess.
 """
 
 from __future__ import annotations
@@ -15,6 +18,10 @@ from pedalpoint.transcripts import HandoffCost
 
 ESTIMATED_CALL_COST = 100
 REWRITE_SHARE = {7: 0.0, 6: 0.1, 5: 0.3, 4: 0.5, 3: 0.75, 2: 0.9, 1: 1.0}
+VERDICT_NOTE = (
+    "The verdict covers output tokens and scores only. Weigh it against input\n"
+    "yourself: Anthropic doesn't publish how plan limits count new and cached input."
+)
 
 
 @dataclass(frozen=True)
@@ -38,7 +45,8 @@ class Row:
     redo_rate: float | None
     local_tokens: int
     net_output: int
-    input_overhead: int
+    new_input: int | None  # None: no handoff in this row was measured
+    cached_input: int | None
     pct_estimated: float
     paying_off: bool
 
@@ -71,14 +79,13 @@ def join_records(records: list[dict]) -> list[Handoff]:
     return handoffs
 
 
-def net_saved(h: Handoff, cost: HandoffCost | None) -> tuple[int, int, bool]:
-    """Return (net_output_saved, input_overhead, estimated)."""
+def net_saved(h: Handoff, cost: HandoffCost | None) -> tuple[int, bool]:
+    """Return (net_output_saved, estimated)."""
     if cost is not None and cost.complete:
-        net = h.changed_tokens - cost.call_output - cost.review_output
-        return net, cost.review_input, False
+        return h.changed_tokens - cost.call_output - cost.review_output, False
     share = REWRITE_SHARE[h.score] if h.score is not None else 0.0
     net = h.changed_tokens - ESTIMATED_CALL_COST - round(h.changed_tokens * share)
-    return net, 0, True
+    return net, True
 
 
 def summarize(
@@ -101,6 +108,8 @@ def summarize(
         avg = sum(scored) / len(scored) if scored else None
         redo = sum(s <= 2 for s in scored) / len(scored) if scored else None
         net = sum(r[0] for r in results)
+        found = [costs.get(h.handoff_id) for h in group]
+        measured = [c for c in found if c is not None and c.complete]
         rows.append(
             Row(
                 model=model,
@@ -111,8 +120,15 @@ def summarize(
                 redo_rate=redo,
                 local_tokens=sum(h.completion_tokens for h in group),
                 net_output=net,
-                input_overhead=sum(r[1] for r in results),
-                pct_estimated=sum(r[2] for r in results) / len(group),
+                new_input=(
+                    sum(c.review_input - c.review_cached for c in measured)
+                    if measured
+                    else None
+                ),
+                cached_input=(
+                    sum(c.review_cached for c in measured) if measured else None
+                ),
+                pct_estimated=sum(r[1] for r in results) / len(group),
                 paying_off=net > 0 and (avg is None or avg >= 5),
             )
         )
@@ -129,8 +145,9 @@ def format_rows(rows: list[Row], days: int) -> str:
         "avg score",
         "redo %",
         "local tok",
-        "net saved",
-        "input overhead",
+        "output saved",
+        "new input",
+        "cached input",
         "est %",
         "",
     )
@@ -145,13 +162,15 @@ def format_rows(rows: list[Row], days: int) -> str:
                 "-" if r.redo_rate is None else f"{r.redo_rate:.0%}",
                 str(r.local_tokens),
                 str(r.net_output),
-                str(r.input_overhead),
+                "-" if r.new_input is None else str(r.new_input),
+                "-" if r.cached_input is None else str(r.cached_input),
                 f"{r.pct_estimated:.0%}",
                 "" if r.paying_off else "NOT PAYING OFF",
             )
         )
     widths = [max(len(row[i]) for row in table) for i in range(len(header))]
-    return "\n".join(
+    lines = [
         "  ".join(cell.ljust(w) for cell, w in zip(row, widths)).rstrip()
         for row in table
-    )
+    ]
+    return "\n".join(lines) + "\n\n" + VERDICT_NOTE

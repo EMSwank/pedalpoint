@@ -213,8 +213,8 @@ pedalpoint stats
 The report has one row per model per week. This example is for illustration:
 
 ```text
-model                              week      handoffs  avg score  redo %  local tok  net saved  input overhead  est %
-mlx-community/gemma-4-e4b-it-4bit  2026-W45  12        6.1        8%      9400       3100       41000           0%
+model                              week      handoffs  avg score  redo %  local tok  output saved  new input  cached input  est %
+mlx-community/gemma-4-e4b-it-4bit  2026-W45  12        6.1        8%      9400       3100          4100       36900         0%
 ```
 
 | Column | Meaning |
@@ -223,11 +223,14 @@ mlx-community/gemma-4-e4b-it-4bit  2026-W45  12        6.1        8%      9400  
 | `avg score` | Average score, from the scale below |
 | `redo %` | Share of drafts scored 1 or 2, meaning Claude started over |
 | `local tok` | Tokens written by the local model |
-| `net saved` | Claude output tokens saved after the cost of each handoff and review. This is the main number |
-| `input overhead` | Tokens Claude read during reviews |
-| `est %` | Share of handoffs estimated because no Claude Code transcript was found |
+| `output saved` | Claude output tokens saved after the cost of each handoff and review |
+| `new input` | Tokens Claude read for the first time during reviews |
+| `cached input` | Tokens Claude read again from its cache during reviews, usually most of the conversation so far |
+| `est %` | Share of handoffs estimated because no Claude Code transcript was found. Estimated handoffs aren't counted in the input columns, which show a dash if none were measured |
 
-A row marked `NOT PAYING OFF` has an average score under 5, or saved nothing overall.
+A row marked `NOT PAYING OFF` has an average score under 5, or saved no output tokens overall.
+
+That verdict leaves input out on purpose. Each step of a handoff also makes Claude read the conversation again, and Anthropic doesn't publish how plan limits count new and cached input. pedalpoint shows the numbers side by side rather than guess, so a row with no warning can still cost more than it saves. To see the effect on your own plan, compare your usage over similar sessions with and without handoffs.
 
 | Score | What Claude had to do |
 |---|---|

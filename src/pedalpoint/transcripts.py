@@ -21,8 +21,9 @@ _OUTCOME_TOOL = "__record_outcome"
 class HandoffCost:
     call_output: int
     review_output: int
-    review_input: int
+    review_input: int  # everything Claude read during review, cached included
     complete: bool
+    review_cached: int = 0  # the share of review_input served from the cache
 
 
 def projects_dir() -> Path:
@@ -64,7 +65,8 @@ def _result_text(block: dict) -> str:
 
 def _scan(path: Path, wanted: set[str], found: dict[str, HandoffCost]) -> None:
     seen_requests: set[str] = set()
-    open_: dict[str, list[int]] = {}  # hid -> [call_output, review_out, review_in]
+    # hid -> [call_output, review_out, review_in, review_cached]
+    open_: dict[str, list[int]] = {}
     pending_calls: dict[str, int] = {}  # tool_use_id -> output of issuing request
     charged_requests: set[str] = set()  # a request's output is charged to one call
 
@@ -83,11 +85,13 @@ def _scan(path: Path, wanted: set[str], found: dict[str, HandoffCost]) -> None:
                     "cache_creation_input_tokens",
                 )
             )
+            cached = int(usage.get("cache_read_input_tokens") or 0)
             if req not in seen_requests:
                 seen_requests.add(req)
                 for totals in open_.values():
                     totals[1] += out
                     totals[2] += inp
+                    totals[3] += cached
             for block in _blocks(entry):
                 if block.get("type") != "tool_use":
                     continue
@@ -100,8 +104,10 @@ def _scan(path: Path, wanted: set[str], found: dict[str, HandoffCost]) -> None:
                 elif name.endswith(_OUTCOME_TOOL):
                     hid = (block.get("input") or {}).get("handoff_id")
                     if hid in open_:
-                        call, rev_out, rev_in = open_.pop(hid)
-                        found[hid] = HandoffCost(call, rev_out, rev_in, True)
+                        call, rev_out, rev_in, rev_cached = open_.pop(hid)
+                        found[hid] = HandoffCost(
+                            call, rev_out, rev_in, True, rev_cached
+                        )
         elif entry.get("type") == "user":
             for block in _blocks(entry):
                 tool_id = block.get("tool_use_id")
@@ -113,10 +119,10 @@ def _scan(path: Path, wanted: set[str], found: dict[str, HandoffCost]) -> None:
                 # handoff must not block the copy that reaches its outcome.
                 done = hid in found and found[hid].complete
                 if hid in wanted and not done:
-                    open_[hid] = [pending_calls[tool_id], 0, 0]
+                    open_[hid] = [pending_calls[tool_id], 0, 0, 0]
 
-    for hid, (call, rev_out, rev_in) in open_.items():
-        found.setdefault(hid, HandoffCost(call, rev_out, rev_in, False))
+    for hid, (call, rev_out, rev_in, rev_cached) in open_.items():
+        found.setdefault(hid, HandoffCost(call, rev_out, rev_in, False, rev_cached))
 
 
 def _modified_before(path: Path, since: float) -> bool:
