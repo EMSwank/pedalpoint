@@ -149,7 +149,7 @@ fi
 # ── Step 3: Install Python package ──────────────────────────────────────────
 printf '→ Installing pedalpoint via %s...\n' "$PKG_MGR"
 case "$PKG_MGR" in
-  uv)   uv tool install --upgrade pedalpoint ;;
+  uv)   uv tool install --upgrade --refresh-package pedalpoint pedalpoint ;;
   pipx) pipx install pedalpoint 2>/dev/null || pipx upgrade pedalpoint ;;
   pip)  pip install --user --upgrade pedalpoint ;;
 esac
