@@ -16,6 +16,9 @@ Notable changes to pedalpoint, newest first. The format follows
 ### Fixed
 
 - Rows with no measured handoffs show a dash for input instead of a false 0.
+- The installer checks for Claude Code before installing or downloading anything.
+- With uv, the installer no longer stops on an old system Python, because uv
+  fetches a suitable one. This includes a new Mac, which ships Python 3.9.
 
 ## 0.5.2 - 2026-11-05
 

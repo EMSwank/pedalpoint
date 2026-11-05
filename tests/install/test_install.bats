@@ -54,6 +54,12 @@ EOF
   stub_platform Linux x86_64
 }
 
+# hide_uv — remove uv, including any real one, so the Python check applies
+hide_uv() {
+  rm -f "$STUB_DIR/uv"
+  export PATH="$STUB_DIR:/usr/bin:/bin"
+}
+
 # stub_recorder TOOL — stub that appends its arguments to $HOME/.TOOL_args
 stub_recorder() {
   printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$HOME/.%s_args"\nexit 0\n' "$1" \
@@ -340,6 +346,7 @@ EOF
   printf '#!/bin/sh\nexit 0\n' > "$STUB_DIR/python3.11"
   chmod +x "$STUB_DIR/python3.11"
 
+  hide_uv
   run sh "$INSTALL_SH"
   [ "$status" -eq 0 ]
 }
@@ -355,9 +362,36 @@ EOF
     chmod +x "$STUB_DIR/$_py"
   done
 
+  hide_uv
   run sh "$INSTALL_SH"
   [ "$status" -eq 1 ]
   printf '%s\n' "${output}" | grep -q "Python 3.11+ required"
+  printf '%s\n' "${output}" | grep -q "docs.astral.sh/uv"
+}
+
+@test "uv installs with only an old system python" {
+  # uv fetches a suitable Python itself, so an old python3 must not stop it.
+  printf '#!/bin/sh\n[ "$1" = "--version" ] && { printf "Python 3.9.6\n"; exit 0; }; exit 1\n' \
+    > "$STUB_DIR/python3"
+  chmod +x "$STUB_DIR/python3"
+  stub_recorder uv
+  export PATH="$STUB_DIR:/usr/bin:/bin"
+  run sh "$INSTALL_SH" --backend ollama
+  [ "$status" -eq 0 ]
+  grep -q "tool install" "$HOME/.uv_args"
+}
+
+@test "missing Claude Code stops before anything is installed or downloaded" {
+  stub_recorder uv
+  rm "$STUB_DIR/claude"
+  export PATH="$STUB_DIR:/usr/bin:/bin"
+  run sh "$INSTALL_SH" --backend mlx
+  [ "$status" -eq 1 ]
+  printf '%s\n' "${output}" | grep -q "ERROR: claude CLI not found"
+  printf '%s\n' "${output}" | grep -q "code.claude.com/docs"
+  [ ! -f "$HOME/.uv_args" ]
+  [ ! -f "$HOME/.uvx_args" ]
+  [ ! -f "$HOME/.curl_args" ]
 }
 
 # ── Uninstall ─────────────────────────────────────────────────────────────────
