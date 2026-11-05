@@ -107,6 +107,7 @@ API_FALLBACK state: same schema as OPEN but `"circuit": "api_fallback"`. Judgmen
 - The supervisor is launched as `sys.executable -m pedalpoint.cli mlx-supervise`, so `cli.py` keeps its `if __name__ == "__main__"` guard. Its tests inject `popen`/`sleep`/`now`; never let a unit test start a real model.
 - Backend resolution order: `PEDALPOINT_BACKEND` → `PEDALPOINT_BASE_URL` inference → `~/.pedalpoint/backend` (written by install.sh) → platform default. `tests/conftest.py` points `HOME` at a temp dir so the real file never leaks into tests.
 - Always send `max_tokens` (`PEDALPOINT_MAX_TOKENS`, default 8192): `mlx_lm.server` defaults to 512 and silently truncates; `finish_reason == "length"` raises instead of writing a draft.
+- Claude Code stores MCP results double-encoded (`{"result": "{\"handoff_id\": ...}"}`). `tests/unit/fixtures/claude_code_handoff.jsonl` is a sanitized real handoff: when transcript parsing changes, test against real data, because hand-written samples hid this bug for two releases.
 - 402 errors trigger permanent fallback. 429 errors trigger retry-with-backoff only. Do not conflate them.
 - The companion skill has no Python backing. Skill tests are manual scenarios in `tests/skill/scenarios/`.
 - `ANTHROPIC_API_KEY` is optional at startup. If absent, `_call_claude_api` raises `ValueError("ANTHROPIC_API_KEY not set...")`. FastMCP stringifies it; the skill's error dispatch table matches on that text and writes OPEN state.

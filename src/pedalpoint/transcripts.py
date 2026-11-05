@@ -11,7 +11,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-_HANDOFF_ID = re.compile(r'"handoff_id":\s*"([^"]+)"')
+# Claude Code double-encodes MCP results, so the quotes may arrive escaped.
+_HANDOFF_ID = re.compile(r'\\*"handoff_id\\*":\s*\\*"([^"\\]+)')
 _CALL_TOOLS = ("__local_llm", "__claude_api")
 _OUTCOME_TOOL = "__record_outcome"
 

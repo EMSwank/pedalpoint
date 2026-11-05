@@ -204,3 +204,18 @@ def test_old_transcripts_skipped_with_since(tmp_path: Path) -> None:
     os.utime(path, (1000, 1000))
     assert handoff_costs({"h1"}, tmp_path, since=2000) == {}
     assert "h1" in handoff_costs({"h1"}, tmp_path, since=500)
+
+
+def test_real_claude_code_transcript(tmp_path: Path) -> None:
+    # A sanitized copy of a real handoff. Claude Code double-encodes MCP results
+    # as {"result": "{\"handoff_id\": ...}"}, and sample data written by hand
+    # hid that for two releases, so keep this test on real data.
+    fixture = Path(__file__).parent / "fixtures" / "claude_code_handoff.jsonl"
+    proj = tmp_path / "-Users-me-proj"
+    proj.mkdir()
+    (proj / "s1.jsonl").write_text(fixture.read_text())
+    cost = handoff_costs({"8efa223b0946"}, tmp_path)["8efa223b0946"]
+    assert cost.complete is True
+    assert cost.call_output == 513
+    assert cost.review_output > 0
+    assert cost.review_input > 0
